@@ -1,0 +1,1378 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bedside Call Unit - Patient Console</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+    <style>
+        .bedside-container {
+            max-width: 650px;
+            margin: 20px auto;
+        }
+
+        .patient-details-card {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 14px;
+            padding: 20px;
+            margin-bottom: 20px;
+            text-align: left;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        }
+
+        .patient-card-header-flex {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 10px;
+            margin-bottom: 15px;
+        }
+
+        .detail-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 15px;
+            margin-bottom: 10px;
+            font-size: 0.95rem;
+        }
+
+        .detail-item {
+            flex: 1;
+            min-width: 200px;
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid var(--border-color);
+            padding: 8px 12px;
+            border-radius: 8px;
+        }
+
+        .detail-label {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 2px;
+        }
+
+        .detail-value {
+            font-weight: 700;
+            color: var(--text-primary);
+        }
+
+        .bedside-box {
+            background: var(--card-bg);
+            border: 2px solid var(--border-color);
+            border-radius: 16px;
+            padding: 25px;
+            text-align: center;
+        }
+
+        .btn-call-nurse {
+            background: #eab308;
+            color: #0f172a;
+            font-size: 1.4rem;
+            font-weight: 800;
+            padding: 20px;
+            border-radius: 12px;
+            border: none;
+            cursor: pointer;
+            width: 100%;
+            margin-bottom: 15px;
+            transition: transform 0.1s, filter 0.2s;
+            box-shadow: 0 4px 14px rgba(234, 179, 8, 0.4);
+        }
+
+        .btn-call-doctor {
+            background: #ef4444;
+            color: #ffffff;
+            font-size: 1.4rem;
+            font-weight: 800;
+            padding: 20px;
+            border-radius: 12px;
+            border: none;
+            cursor: pointer;
+            width: 100%;
+            margin-bottom: 15px;
+            transition: transform 0.1s, filter 0.2s;
+            box-shadow: 0 4px 14px rgba(239, 68, 68, 0.5);
+            animation: pulse-red 2s infinite;
+        }
+
+        .btn-call-help {
+            background: #3b82f6;
+            color: #ffffff;
+            font-size: 1.3rem;
+            font-weight: 800;
+            padding: 16px;
+            border-radius: 12px;
+            border: none;
+            cursor: pointer;
+            width: 100%;
+            margin-bottom: 15px;
+            transition: transform 0.1s, filter 0.2s;
+            box-shadow: 0 4px 14px rgba(59, 130, 246, 0.4);
+        }
+
+        .btn-reset-call {
+            background: #22c55e;
+            color: #ffffff;
+            font-size: 1.1rem;
+            font-weight: 700;
+            padding: 14px;
+            border-radius: 10px;
+            border: none;
+            cursor: pointer;
+            width: 100%;
+        }
+
+        .btn-config-mac {
+            background: var(--border-color);
+            color: var(--text-primary);
+            border: 1px solid var(--border-color);
+            padding: 6px 14px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 0.85rem;
+            font-weight: bold;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            text-decoration: none;
+        }
+
+        .btn-config-mac:hover {
+            background: var(--accent-blue);
+            color: #0f172a;
+        }
+
+        @keyframes pulse-red {
+            0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.6); }
+            70% { box-shadow: 0 0 0 15px rgba(239, 68, 68, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+        }
+
+        .led-indicator-box {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            border: 3px solid rgba(255,255,255,0.25);
+            box-shadow: 0 0 10px rgba(0,0,0,0.5);
+            transition: all 0.3s ease;
+            display: inline-block;
+        }
+
+        .led-off {
+            background: #334155;
+            box-shadow: inset 0 0 8px #000;
+        }
+
+        .led-solid-nurse {
+            background: #eab308;
+            box-shadow: 0 0 20px #eab308, inset 0 0 5px #ffffff;
+        }
+
+        .led-solid-doctor {
+            background: #ef4444;
+            box-shadow: 0 0 25px #ef4444, inset 0 0 5px #ffffff;
+        }
+
+        .led-solid-help {
+            background: #3b82f6;
+            box-shadow: 0 0 20px #3b82f6, inset 0 0 5px #ffffff;
+        }
+
+        .led-solid-urgent {
+            background: #dc2626;
+            box-shadow: 0 0 30px #dc2626, inset 0 0 5px #ffffff;
+            animation: pulse-red 0.8s infinite;
+        }
+
+        .led-blinking {
+            background: #f59e0b;
+            animation: led-blink-anim 0.6s infinite alternate;
+        }
+
+        @keyframes led-blink-anim {
+            0% { opacity: 0.2; box-shadow: 0 0 2px #f59e0b; }
+            100% { opacity: 1; box-shadow: 0 0 25px #f59e0b, 0 0 40px #f59e0b; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container bedside-container">
+        <header>
+            <div class="title-area">
+                <h1>🛏️ Bedside Call Unit</h1>
+                <div class="subtitle">WiFi Patient Assistance Console</div>
+            </div>
+            <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                <button id="btn-bedside-dispatch" class="btn-config-mac" style="background:#3b82f6; color:#fff;">📢 Dispatch Request</button>
+                <button id="btn-bedside-notice" class="btn-config-mac" style="background:#8b5cf6; color:#fff;">💬 Notice Board</button>
+                <button id="btn-open-mac-modal" class="btn-config-mac">🔒 MAC ID</button>
+                <a href="/" class="nav-link">🖥️ Staff Dashboard</a>
+            </div>
+        </header>
+
+        <!-- Quick Search Room & Bed Selector with Ward Filter -->
+        <div style="background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 12px; padding: 12px 18px; margin-bottom: 18px; display: flex; flex-direction: column; gap: 10px;">
+            <div style="font-weight: bold; font-size: 0.95rem; color: var(--accent-blue); display: flex; align-items: center; justify-content: space-between;">
+                <span>🔍 Filter & Search Ward, Room & Bed Number:</span>
+                <button id="btn-refresh-beds" style="background:none; border:none; color:var(--text-secondary); cursor:pointer; font-size:0.85rem;">🔄 Refresh</button>
+            </div>
+            <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                <select id="bedside-ward-filter" style="flex: 1; min-width: 140px; padding: 8px 12px; border-radius: 8px; background: rgba(255,255,255,0.05); color: var(--text-primary); border: 1px solid var(--border-color); font-weight: bold;">
+                    <option value="">🏢 All Wards</option>
+                </select>
+                <select id="bedside-search-select" style="flex: 2; min-width: 250px; padding: 8px 12px; border-radius: 8px; background: rgba(255,255,255,0.05); color: var(--text-primary); border: 1px solid var(--border-color); font-weight: bold;">
+                    <option value="">-- Select Room & Bed --</option>
+                </select>
+            </div>
+        </div>
+
+        <!-- Live Patient Details Card -->
+        <div class="patient-details-card">
+            <div class="patient-card-header-flex">
+                <div>
+                    <h2 id="bedside-patient-name" style="margin:0; font-size:1.4rem; color:var(--accent-blue);">Loading Patient Details...</h2>
+                    <div id="bedside-ward-location" style="color:var(--text-secondary); font-size:0.9rem; margin-top:2px;">General Ward | Room 101, Bed A1</div>
+                </div>
+                <div id="bedside-status-badge" class="call-status-box NORMAL" style="margin:0; font-size:0.85rem; padding: 6px 12px;">
+                    NORMAL / RESTING
+                </div>
+            </div>
+
+            <!-- Health Condition Gauge Bar & Edit Button -->
+            <div class="detail-row">
+                <div class="detail-item" style="flex:1;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+                        <div class="detail-label">❤️ Patient Health Condition Gauge</div>
+                        <button id="btn-bedside-edit-health" style="background:rgba(239, 68, 68, 0.15); border:1px solid #ef4444; color:#f87171; border-radius:6px; padding:2px 8px; font-size:0.78rem; font-weight:bold; cursor:pointer;">❤️ Edit Health</button>
+                    </div>
+                    <div class="detail-value" id="bedside-health-gauge" style="display:flex; align-items:center; gap:12px; margin-top:4px;">
+                        <div style="flex:1; background:rgba(255,255,255,0.1); height:12px; border-radius:6px; overflow:hidden;">
+                            <div id="bedside-health-bar" style="width:100%; height:100%; background:#22c55e; transition:width 0.3s;"></div>
+                        </div>
+                        <span id="bedside-health-badge" style="background:#22c55e; color:#fff; font-weight:bold; font-size:0.85rem; padding:3px 10px; border-radius:6px; min-width:110px; text-align:center;">100% (Stable)</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="detail-row">
+                <div class="detail-item">
+                    <div class="detail-label">🎂 Age / Gender</div>
+                    <div class="detail-value" id="bedside-age-gender">--</div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-label">🩺 Assigned Doctor</div>
+                    <div class="detail-value" id="bedside-doctor">Unassigned</div>
+                </div>
+            </div>
+
+            <div class="detail-row">
+                <div class="detail-item">
+                    <div class="detail-label">💳 ID Card (<span id="bedside-id-type">Aadhar Card</span>)</div>
+                    <div class="detail-value" id="bedside-id-no">9876-5432-1098</div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-label">📞 Mobile Number</div>
+                    <div class="detail-value" id="bedside-mobile">+91 98765-43210</div>
+                </div>
+            </div>
+
+            <div class="detail-row">
+                <div class="detail-item">
+                    <div class="detail-label">📋 Cause of Admission</div>
+                    <div class="detail-value" id="bedside-cause">General Checkup</div>
+                </div>
+                <div class="detail-item">
+                    <div class="detail-label">🏥 Referred By</div>
+                    <div class="detail-value" id="bedside-referred-by">Self / Walk-in</div>
+                </div>
+            </div>
+
+            <div id="bedside-custom-fields-container"></div>
+
+            <div class="detail-row">
+                <div class="detail-item" style="flex:1;">
+                    <div class="detail-label">📶 Device MAC & Hardware ID</div>
+                    <div class="detail-value" id="bedside-mac-id" style="font-family: monospace; color: var(--accent-purple);">A4:CF:12:89:5B:01</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Urgent Escalation Alert Banner -->
+        <div id="urgent-banner" class="hidden" style="background: rgba(239, 68, 68, 0.15); border: 2px solid #ef4444; color: #fecaca; padding: 15px; border-radius: 12px; margin-bottom: 20px; text-align: center; font-weight: bold; font-size: 1.02rem; animation: pulse-red 1s infinite;">
+            🚨 URGENT ASSISTANCE REQUIRED! REPEATED / MULTIPLE PRESSES DETECTED. DOCTOR, NURSE & HELPER NOTIFIED IMMEDIATELY!
+        </div>
+
+        <!-- 3-State LED Hardware Indicator Box -->
+        <div id="led-box-container" style="background: rgba(15, 23, 42, 0.7); border: 2px solid var(--border-color); border-radius: 14px; padding: 15px 20px; margin-bottom: 20px; display: flex; align-items: center; justify-content: space-between;">
+            <div style="text-align: left;">
+                <div style="font-size: 0.78rem; color: var(--text-secondary); font-weight: bold; letter-spacing: 0.5px;">💡 BEDSIDE LED STATUS INDICATOR</div>
+                <div id="led-state-label" style="font-size: 1.05rem; font-weight: 800; color: #94a3b8; margin-top: 2px;">STATE: OFF (SERVED / RESTING)</div>
+            </div>
+            <div id="led-indicator" class="led-indicator-box led-off"></div>
+        </div>
+
+        <!-- Call Trigger Box -->
+        <div class="bedside-box">
+            <div class="form-row" style="margin-bottom: 20px;">
+                <div class="form-group flex-1">
+                    <label>Room Number:</label>
+                    <input type="text" id="bedside-room" value="101" style="text-align: center; font-weight: bold; font-size: 1.2rem;">
+                </div>
+                <div class="form-group flex-1">
+                    <label>Bed Number:</label>
+                    <input type="text" id="bedside-bed" value="A1" style="text-align: center; font-weight: bold; font-size: 1.2rem;">
+                </div>
+            </div>
+
+            <!-- 4 Bedside Unit Buttons -->
+            <button class="btn-call-nurse" id="btn-nurse">🔔 CALL NURSE</button>
+            <button class="btn-call-doctor" id="btn-doctor">🚨 CALL DOCTOR (EMERGENCY)</button>
+            <button class="btn-call-help" id="btn-help">🤝 CALL ATTENDEE / GENERAL HELP</button>
+            <button class="btn-reset-call" id="btn-reset">🟢 CANCEL / RESET CALL</button>
+
+            <div id="bedside-status" style="margin-top: 20px; font-weight: 600; font-size: 1rem; color: var(--text-secondary);">
+                Press a button to trigger a bedside alert.
+            </div>
+        </div>
+
+        <!-- Active Service Requests Box for Bedside Unit -->
+        <div id="bedside-service-requests-box" class="hidden" style="background: var(--card-bg); border: 1px solid rgba(59, 130, 246, 0.4); border-radius: 14px; padding: 16px; margin-top: 20px; text-align: left;">
+            <div style="font-weight: bold; font-size: 0.95rem; color: #60a5fa; margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between;">
+                <span>📢 Active Doctor/Nurse Service Requests (<span id="bedside-service-count">0</span>)</span>
+                <button id="btn-bedside-dispatch-inline" style="background: #3b82f6; color: #fff; border: none; font-size: 0.8rem; font-weight: bold; padding: 4px 10px; border-radius: 6px; cursor: pointer;">+ Create Request</button>
+            </div>
+            <div id="bedside-service-list" style="display: flex; flex-direction: column; gap: 8px;"></div>
+        </div>
+    </div>
+
+    <!-- Password Protected MAC Allocation Modal -->
+    <div id="mac-modal" class="modal-overlay hidden">
+        <div class="modal-content modal-small">
+            <div class="modal-header">
+                <h2>🔒 Password-Protected MAC Allocation</h2>
+                <button class="close-modal" id="btn-close-mac-modal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div style="background: rgba(234, 179, 8, 0.1); border: 1px solid rgba(234, 179, 8, 0.3); padding: 10px; border-radius: 8px; margin-bottom: 15px; font-size: 0.88rem; color: #fef08a;">
+                    ⚠️ Password required to assign or alter hardware MAC ID & patient allocation.
+                </div>
+
+                <div class="form-group">
+                    <label>Staff Password:</label>
+                    <input type="password" id="alloc-password" placeholder="Enter staff/nurse/admin password">
+                </div>
+
+                <div class="form-group">
+                    <label>Select Active Inpatient:</label>
+                    <select id="alloc-patient-select">
+                        <option value="">Loading patient list...</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label>Hardware MAC Address:</label>
+                    <input type="text" id="alloc-mac-address" placeholder="e.g. A4:CF:12:89:5B:01">
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group flex-1">
+                        <label>Room Number:</label>
+                        <input type="text" id="alloc-room-no" placeholder="101">
+                    </div>
+                    <div class="form-group flex-1">
+                        <label>Bed Number:</label>
+                        <input type="text" id="alloc-bed-no" placeholder="A1">
+                    </div>
+                </div>
+
+                <div id="alloc-error-msg" style="color:#ef4444; font-size:0.88rem; margin-bottom:10px;" class="hidden"></div>
+
+                <button id="btn-submit-alloc" class="btn" style="background: var(--accent-purple); color: #fff;">Save & Allocate MAC ID</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Update Patient Health Condition -->
+    <div id="bedside-health-modal" class="modal-overlay hidden">
+        <div class="modal-content modal-small">
+            <div class="modal-header">
+                <h2>❤️ Update Patient Health Condition</h2>
+                <button class="close-modal" id="btn-close-bedside-health-modal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div id="bedside-health-patient-title" style="margin-bottom:12px; font-weight:bold; color:var(--accent-blue);"></div>
+                <div class="form-group">
+                    <label>Health Condition Percentage (0% Critical to 100% Stable):</label>
+                    <input type="number" id="bedside-health-input" min="0" max="100" value="100" style="font-size:1.2rem; font-weight:bold; text-align:center;">
+                </div>
+                <div class="form-group">
+                    <label>Your Role (Only Doctor & Nurse authorized):</label>
+                    <select id="bedside-health-role">
+                        <option value="Doctor">🩺 Doctor (Authorized)</option>
+                        <option value="Nurse">🔔 Nurse (Authorized)</option>
+                        <option value="Admin">🛡️ Admin (Authorized)</option>
+                        <option value="Receptionist">📋 Receptionist (Unauthorized - Read Only)</option>
+                        <option value="General Helper">🤝 General Helper (Unauthorized - Read Only)</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Staff Name / Notes:</label>
+                    <input type="text" id="bedside-health-staff" placeholder="Dr. Smith / Nurse Mary" value="Dr. Smith">
+                </div>
+                <div id="bedside-health-msg" class="hidden" style="margin-bottom:10px; font-weight:bold; font-size:0.88rem;"></div>
+                <button id="btn-save-bedside-health" class="btn" style="background:#ef4444; color:#fff; font-weight:bold;">Save & Update Health Condition</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Multi-Recipient Service Request (Doctor, Nurse, Helper & SLA) -->
+    <div id="service-request-modal" class="modal-overlay hidden">
+        <div class="modal-content modal-small">
+            <div class="modal-header">
+                <h2>📢 Create Multi-Recipient Service Request</h2>
+                <button class="close-modal" id="btn-close-service-request-modal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div id="service-request-patient-info" style="margin-bottom: 12px; font-weight: bold; color: var(--accent-blue);"></div>
+                
+                <div class="form-group">
+                    <label style="display:block; font-weight:bold; margin-bottom:6px; color:var(--accent-blue);">🏥 Select Target Ward, Room & Bed Location:</label>
+                    <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:8px;">
+                        <select id="service-ward-filter" style="flex:1; min-width:130px; font-weight:bold; padding:8px 10px; border-radius:8px; background:rgba(255,255,255,0.05); color:var(--text-primary); border:1px solid var(--border-color);">
+                            <option value="">🏢 All Wards</option>
+                        </select>
+                        <select id="service-patient-select" style="flex:2; min-width:200px; font-weight:bold; padding:8px 10px; border-radius:8px; background:rgba(255,255,255,0.05); color:var(--text-primary); border:1px solid var(--border-color);">
+                            <option value="">-- Select Patient Bed --</option>
+                        </select>
+                    </div>
+                    <div style="display:flex; gap:10px;">
+                        <div style="flex:1;">
+                            <label style="font-size:0.78rem; color:var(--text-secondary); font-weight:bold;">Room No:</label>
+                            <input type="text" id="service-room-no" placeholder="e.g. 101" style="font-weight:bold; text-align:center; padding:6px 10px; border-radius:6px; background:rgba(255,255,255,0.05); color:var(--text-primary); border:1px solid var(--border-color); width:100%;">
+                        </div>
+                        <div style="flex:1;">
+                            <label style="font-size:0.78rem; color:var(--text-secondary); font-weight:bold;">Bed No:</label>
+                            <input type="text" id="service-bed-no" placeholder="e.g. A1" style="font-weight:bold; text-align:center; padding:6px 10px; border-radius:6px; background:rgba(255,255,255,0.05); color:var(--text-primary); border:1px solid var(--border-color); width:100%;">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label style="display:block; font-weight:bold; margin-bottom:6px;">Select Target Recipients (Single, Multiple or ALL):</label>
+                    <div style="display: flex; gap: 15px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); padding: 10px; border-radius: 8px;">
+                        <label style="cursor: pointer; display: flex; align-items: center; gap: 6px; font-weight: bold;">
+                            <input type="checkbox" class="target-role-cb" value="Doctor"> 🩺 Doctor
+                        </label>
+                        <label style="cursor: pointer; display: flex; align-items: center; gap: 6px; font-weight: bold;">
+                            <input type="checkbox" class="target-role-cb" value="Nurse"> 🔔 Nurse
+                        </label>
+                        <label style="cursor: pointer; display: flex; align-items: center; gap: 6px; font-weight: bold;">
+                            <input type="checkbox" class="target-role-cb" value="General Helper" checked> 🤝 General Helper
+                        </label>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label style="display:block; font-weight:bold; margin-bottom:6px;">Target SLA Timeframe (Served within X mins):</label>
+                    <select id="service-target-minutes">
+                        <option value="5">⚡ 5 Minutes (Urgent Response)</option>
+                        <option value="10">⏱️ 10 Minutes</option>
+                        <option value="15" selected>🕒 15 Minutes (Default SLA)</option>
+                        <option value="30">⏳ 30 Minutes</option>
+                        <option value="60">📅 60 Minutes (Standard Task)</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label style="display:block; font-weight:bold; margin-bottom:6px;">Quick Preset / Instruction Template:</label>
+                    <select id="service-preset-select">
+                        <option value="Custom Instruction">✏️ Custom Specific Instructions</option>
+                        <option value="Assist patient with Wheelchair to Radiology/Lab">♿ Wheelchair Assistance for Patient</option>
+                        <option value="Provide Drinking Water / Food Tray">🥛 Drinking Water / Food Tray Assistance</option>
+                        <option value="Bed Linen Change / Ward Cleaning">🛏️ Bedding Linen Change / Cleaning</option>
+                        <option value="Accompany Patient for Restroom Assistance">🚶 Patient Mobility / Restroom Support</option>
+                        <option value="Urgent Vital Signs & BP Check Required">📊 Vital Signs & BP Monitoring Check</option>
+                        <option value="IV Drip Refill / Medication Check">💊 IV Drip / Medication Inspection</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label style="display:block; font-weight:bold; margin-bottom:6px;">Specific Instructions / Comments:</label>
+                    <textarea id="service-instructions" rows="3" placeholder="Enter custom comments or specific instructions..."></textarea>
+                </div>
+                <div id="service-req-error-msg" class="hidden" style="color:#ef4444; font-size:0.88rem; margin-bottom:10px;"></div>
+                <button id="btn-send-service-request" class="btn" style="background: var(--accent-blue); color: #0f172a; font-weight: bold;">Dispatch Multi-Recipient Service Request</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Hospital Notice Board & Inter-Departmental Chat Box -->
+    <div id="notice-board-modal" class="modal-overlay hidden">
+        <div class="modal-content" style="max-width: 700px;">
+            <div class="modal-header">
+                <h2>💬 Hospital Notice Board & Inter-Departmental Chat</h2>
+                <button class="close-modal" id="btn-close-notice-board-modal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: 8px; padding: 12px; margin-bottom: 15px;">
+                    <div class="form-row">
+                        <div class="form-group flex-1">
+                            <label>Sender Role:</label>
+                            <select id="chat-sender-role">
+                                <option value="Doctor">🩺 Doctor</option>
+                                <option value="Nurse">🔔 Nurse</option>
+                                <option value="Receptionist">📋 Receptionist</option>
+                                <option value="General Helper">🤝 General Helper</option>
+                                <option value="Admin">🛡️ Admin / Management</option>
+                            </select>
+                        </div>
+                        <div class="form-group flex-1">
+                            <label>Sender Name:</label>
+                            <input type="text" id="chat-sender-name" placeholder="Dr. Smith / Nurse Mary" value="Bedside Staff">
+                        </div>
+                        <div class="form-group flex-1">
+                            <label>Target Department:</label>
+                            <select id="chat-target-dept">
+                                <option value="All Departments">📢 All Departments (Broadcast)</option>
+                                <option value="Doctors">🩺 Doctors</option>
+                                <option value="Nurses">🔔 Nurses</option>
+                                <option value="General Helpers">🤝 General Helpers</option>
+                                <option value="Reception">📋 Reception Desk</option>
+                                <option value="ICU Ward">🏥 ICU Ward</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="form-group" style="margin-top: 10px;">
+                        <label>Message Content:</label>
+                        <textarea id="chat-message-text" rows="2" placeholder="Type notice announcement or department message..."></textarea>
+                    </div>
+                    <button id="btn-send-chat-msg" class="btn" style="background: var(--accent-purple); color: #fff; margin-top: 5px;">Post Notice / Broadcast Message</button>
+                </div>
+
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                    <h3 style="margin: 0; font-size: 1rem; color: var(--accent-blue);">📜 Live Broadcast Feed</h3>
+                    <select id="chat-filter-dept" style="padding: 4px 8px; border-radius: 6px; font-size: 0.85rem; background: rgba(255,255,255,0.05); color: var(--text-primary); border: 1px solid var(--border-color);">
+                        <option value="ALL">All Departments</option>
+                        <option value="Doctors">Doctors</option>
+                        <option value="Nurses">Nurses</option>
+                        <option value="General Helpers">General Helpers</option>
+                        <option value="Reception">Reception</option>
+                        <option value="ICU Ward">ICU Ward</option>
+                    </select>
+                </div>
+
+                <div id="chat-messages-container" style="max-height: 250px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; border: 1px solid var(--border-color); padding: 10px; border-radius: 8px; background: rgba(0,0,0,0.2);">
+                    <div style="text-align: center; color: var(--text-secondary); padding: 10px;">Loading notice board messages...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const socket = io();
+        const bedsideRoom = document.getElementById('bedside-room');
+        const bedsideBed = document.getElementById('bedside-bed');
+        const bedsideStatus = document.getElementById('bedside-status');
+
+        // Patient Card Details Elements
+        const bedsidePatientName = document.getElementById('bedside-patient-name');
+        const bedsideWardLocation = document.getElementById('bedside-ward-location');
+        const bedsideStatusBadge = document.getElementById('bedside-status-badge');
+        const bedsideAgeGender = document.getElementById('bedside-age-gender');
+        const bedsideIdType = document.getElementById('bedside-id-type');
+        const bedsideIdNo = document.getElementById('bedside-id-no');
+        const bedsideMobile = document.getElementById('bedside-mobile');
+        const bedsideCause = document.getElementById('bedside-cause');
+        const bedsideReferredBy = document.getElementById('bedside-referred-by');
+        const bedsideMacId = document.getElementById('bedside-mac-id');
+
+        // Modal elements
+        const macModal = document.getElementById('mac-modal');
+        const btnOpenMacModal = document.getElementById('btn-open-mac-modal');
+        const btnCloseMacModal = document.getElementById('btn-close-mac-modal');
+        const allocPassword = document.getElementById('alloc-password');
+        const allocPatientSelect = document.getElementById('alloc-patient-select');
+        const allocMacAddress = document.getElementById('alloc-mac-address');
+        const allocRoomNo = document.getElementById('alloc-room-no');
+        const allocBedNo = document.getElementById('alloc-bed-no');
+        const btnSubmitAlloc = document.getElementById('btn-submit-alloc');
+        const allocErrorMsg = document.getElementById('alloc-error-msg');
+
+        // Search & Ward Filter elements
+        const bedsideWardFilter = document.getElementById('bedside-ward-filter');
+        const bedsideSearchSelect = document.getElementById('bedside-search-select');
+        const btnRefreshBeds = document.getElementById('btn-refresh-beds');
+
+        // Health Elements & Modal
+        const bedsideHealthBar = document.getElementById('bedside-health-bar');
+        const bedsideHealthBadge = document.getElementById('bedside-health-badge');
+        const btnBedsideEditHealth = document.getElementById('btn-bedside-edit-health');
+        const bedsideHealthModal = document.getElementById('bedside-health-modal');
+        const btnCloseBedsideHealthModal = document.getElementById('btn-close-bedside-health-modal');
+        const bedsideHealthPatientTitle = document.getElementById('bedside-health-patient-title');
+        const bedsideHealthInput = document.getElementById('bedside-health-input');
+        const bedsideHealthRole = document.getElementById('bedside-health-role');
+        const bedsideHealthStaff = document.getElementById('bedside-health-staff');
+        const bedsideHealthMsg = document.getElementById('bedside-health-msg');
+        const btnSaveBedsideHealth = document.getElementById('btn-save-bedside-health');
+
+        // Service Request Elements & Modal
+        const bedsideServiceBox = document.getElementById('bedside-service-requests-box');
+        const bedsideServiceCount = document.getElementById('bedside-service-count');
+        const bedsideServiceList = document.getElementById('bedside-service-list');
+        const btnBedsideDispatch = document.getElementById('btn-bedside-dispatch');
+        const btnBedsideDispatchInline = document.getElementById('btn-bedside-dispatch-inline');
+        const serviceRequestModal = document.getElementById('service-request-modal');
+        const btnCloseServiceRequestModal = document.getElementById('btn-close-service-request-modal');
+        const serviceRequestPatientInfo = document.getElementById('service-request-patient-info');
+        const serviceWardFilter = document.getElementById('service-ward-filter');
+        const servicePatientSelect = document.getElementById('service-patient-select');
+        const serviceRoomNo = document.getElementById('service-room-no');
+        const serviceBedNo = document.getElementById('service-bed-no');
+        const serviceTargetMinutes = document.getElementById('service-target-minutes');
+        const servicePresetSelect = document.getElementById('service-preset-select');
+        const serviceInstructions = document.getElementById('service-instructions');
+        const btnSendServiceRequest = document.getElementById('btn-send-service-request');
+        const serviceReqErrorMsg = document.getElementById('service-req-error-msg');
+
+        // Notice Board Elements & Modal
+        const btnBedsideNotice = document.getElementById('btn-bedside-notice');
+        const noticeBoardModal = document.getElementById('notice-board-modal');
+        const btnCloseNoticeBoardModal = document.getElementById('btn-close-notice-board-modal');
+        const chatSenderRole = document.getElementById('chat-sender-role');
+        const chatSenderName = document.getElementById('chat-sender-name');
+        const chatTargetDept = document.getElementById('chat-target-dept');
+        const chatMessageText = document.getElementById('chat-message-text');
+        const btnSendChatMsg = document.getElementById('btn-send-chat-msg');
+        const chatFilterDept = document.getElementById('chat-filter-dept');
+        const chatMessagesContainer = document.getElementById('chat-messages-container');
+
+        let allBedsData = [];
+        let currentMac = localStorage.getItem('assigned_esp_mac') || 'A4:CF:12:89:5B:01';
+        let activePatientId = null;
+        let currentPatientObj = null;
+
+        function loadSearchBedsOptions() {
+            fetch('/api/bedside/search_beds')
+                .then(r => r.json())
+                .then(beds => {
+                    allBedsData = beds;
+                    populateWardFilterOptions();
+                    populateSearchSelectOptions();
+                    populateServiceModalPatientOptions();
+                })
+                .catch(err => console.error("Error loading beds:", err));
+        }
+
+        function populateWardFilterOptions() {
+            if (!bedsideWardFilter) return;
+            const currentWard = bedsideWardFilter.value;
+            const wards = Array.from(new Set(allBedsData.map(b => b.ward).filter(Boolean)));
+            
+            let html = '<option value="">🏢 All Wards</option>';
+            html += wards.map(w => `<option value="${w}" ${w === currentWard ? 'selected' : ''}>🏥 ${w}</option>`).join('');
+            bedsideWardFilter.innerHTML = html;
+        }
+
+        function populateSearchSelectOptions() {
+            if (!bedsideSearchSelect) return;
+            const selectedWard = bedsideWardFilter.value;
+            let filtered = allBedsData;
+            if (selectedWard) {
+                filtered = allBedsData.filter(b => b.ward === selectedWard);
+            }
+
+            let html = '<option value="">-- Select Room & Bed --</option>';
+            html += filtered.map(b => {
+                const isCurrent = (activePatientId && b.patient_id === activePatientId) ||
+                    (!activePatientId && b.room_no === bedsideRoom.value.trim() && b.bed_no === bedsideBed.value.trim());
+                return `<option value="${b.room_no}_${b.bed_no}" data-pid="${b.patient_id}" ${isCurrent ? 'selected' : ''}>🚪 Room ${b.room_no} - Bed ${b.bed_no} (${b.patient_name}) | ${b.ward || 'General'} | ❤️ ${b.health_condition || 100}%</option>`;
+            }).join('');
+            bedsideSearchSelect.innerHTML = html;
+        }
+
+        if (bedsideWardFilter) {
+            bedsideWardFilter.addEventListener('change', populateSearchSelectOptions);
+        }
+
+        if (bedsideSearchSelect) {
+            bedsideSearchSelect.addEventListener('change', () => {
+                const val = bedsideSearchSelect.value;
+                if (val) {
+                    const parts = val.split('_');
+                    bedsideRoom.value = parts[0];
+                    bedsideBed.value = parts[1];
+                    const selectedOpt = bedsideSearchSelect.options[bedsideSearchSelect.selectedIndex];
+                    const pid = selectedOpt ? selectedOpt.getAttribute('data-pid') : null;
+                    if (pid) {
+                        activePatientId = parseInt(pid, 10);
+                    } else {
+                        activePatientId = null;
+                    }
+                    loadPatientDetails();
+                }
+            });
+        }
+
+        if (btnRefreshBeds) {
+            btnRefreshBeds.addEventListener('click', loadSearchBedsOptions);
+        }
+
+        function updateHealthUI(healthPct) {
+            const pct = (healthPct !== undefined && healthPct !== null) ? healthPct : 100;
+            if (bedsideHealthBar && bedsideHealthBadge) {
+                bedsideHealthBar.style.width = `${pct}%`;
+                let color = '#22c55e';
+                let label = 'Stable';
+                if (pct < 50) {
+                    color = '#ef4444';
+                    label = 'Critical';
+                } else if (pct < 80) {
+                    color = '#eab308';
+                    label = 'Under Watch';
+                }
+                bedsideHealthBar.style.background = color;
+                bedsideHealthBadge.style.background = color;
+                bedsideHealthBadge.textContent = `${pct}% (${label})`;
+            }
+        }
+
+        function getBedRoleColor(roleStr, nameStr) {
+            const combined = (String(roleStr || '') + ' ' + String(nameStr || '')).toLowerCase();
+            if (combined.includes('bedside') || combined.includes('bed side') || combined.includes('unit') || combined.includes('patient')) return '#000000';
+            if (combined.includes('doctor')) return '#3b82f6';
+            if (combined.includes('nurse')) return '#eab308';
+            if (combined.includes('helper')) return '#22c55e';
+            if (combined.includes('admin')) return '#a855f7';
+            return '#64748b';
+        }
+
+        function getBedTaskCssClass(targetRoles) {
+            const rolesArr = Array.isArray(targetRoles) ? targetRoles : [targetRoles];
+            const roles = rolesArr.map(r => String(r || '').toLowerCase());
+            const hasDoc = roles.some(r => r.includes('doctor'));
+            const hasNurse = roles.some(r => r.includes('nurse'));
+            const hasHelper = roles.some(r => r.includes('helper'));
+            const count = (hasDoc ? 1 : 0) + (hasNurse ? 1 : 0) + (hasHelper ? 1 : 0);
+
+            if (count >= 3) return 'task-multi-3team';
+            if (count === 2) {
+                if (hasDoc && hasNurse) return 'task-multi-2team-doc-nurse';
+                if (hasDoc && hasHelper) return 'task-multi-2team-doc-helper';
+                if (hasNurse && hasHelper) return 'task-multi-2team-nurse-helper';
+                return 'task-multi-2team';
+            }
+            if (hasDoc) return 'task-box-doctor';
+            if (hasNurse) return 'task-box-nurse';
+            if (hasHelper) return 'task-box-helper';
+            return '';
+        }
+
+        function loadBedServiceRequests(room, bed) {
+            fetch(`/api/service_requests?room_no=${encodeURIComponent(room)}&bed_no=${encodeURIComponent(bed)}&status=PENDING`)
+                .then(r => r.json())
+                .then(reqs => {
+                    if (!bedsideServiceBox || !bedsideServiceList) return;
+                    if (reqs && reqs.length > 0) {
+                        bedsideServiceBox.classList.remove('hidden');
+                        bedsideServiceCount.textContent = reqs.length;
+                        bedsideServiceList.innerHTML = reqs.map(req => {
+                            const remainingMins = Math.max(0, Math.floor(Math.abs(req.remaining_seconds) / 60));
+                            const remainingSecs = Math.max(0, Math.abs(req.remaining_seconds) % 60);
+                            const isOverdue = req.remaining_seconds <= 0;
+                            const rolesArr = Array.isArray(req.target_roles) ? req.target_roles : [req.target_roles];
+                            const taskCssClass = getBedTaskCssClass(rolesArr);
+                            const reqRoleColor = getBedRoleColor(req.requested_role, req.requested_by);
+                            const requestedByStyle = reqRoleColor === '#000000' 
+                                ? `color: #000000; background: #e2e8f0; padding: 1px 5px; border-radius: 4px; font-weight: bold;`
+                                : `color: ${reqRoleColor}; font-weight: bold;`;
+
+                            const badgesHtml = rolesArr.map(r => {
+                                const col = getBedRoleColor(r);
+                                return `<span style="background:${col}22; color:${col}; border:1px solid ${col}; padding:2px 6px; border-radius:10px; font-weight:bold; font-size:0.75rem; margin-right:3px;">${r}</span>`;
+                            }).join('');
+
+                            return `
+                                <div class="${taskCssClass}" style="background: rgba(15, 23, 42, 0.6); border-radius: 8px; padding: 10px 12px; margin-top: 8px;">
+                                    <div style="display:flex; justify-content:space-between; align-items:center; font-size:0.85rem; font-weight:bold; flex-wrap:wrap; gap:4px;">
+                                        <div style="display:flex; align-items:center;">
+                                            <span style="color:var(--text-secondary); margin-right:4px;">Target:</span>
+                                            ${badgesHtml}
+                                        </div>
+                                        <span style="color:${isOverdue ? '#ef4444' : '#eab308'};">⏱️ SLA: ${req.target_minutes}m (${isOverdue ? 'OVERDUE' : 'Due in ' + remainingMins + 'm ' + remainingSecs + 's'})</span>
+                                    </div>
+                                    <div style="font-size:0.9rem; color:var(--text-primary); margin-top:6px; font-weight:600;">
+                                        📝 ${req.instructions}
+                                    </div>
+                                    <div style="display:flex; justify-content:space-between; align-items:center; margin-top:6px; flex-wrap:wrap; gap:4px;">
+                                        <span style="font-size:0.75rem; color:var(--text-secondary);">Requested by <strong style="${requestedByStyle}">${req.requested_by} (${req.requested_role})</strong> at ${req.created_at}</span>
+                                        <button onclick="serveServiceRequest(${req.id})" style="background:#22c55e; color:#fff; border:none; border-radius:4px; padding:3px 8px; font-size:0.75rem; font-weight:bold; cursor:pointer;">✅ Mark Served</button>
+                                    </div>
+                                </div>
+                            `;
+                        }).join('');
+                    } else {
+                        bedsideServiceBox.classList.add('hidden');
+                    }
+                });
+        }
+
+        window.serveServiceRequest = function(reqId) {
+            fetch('/api/service_request/serve', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    request_id: reqId,
+                    served_by: bedsideHealthStaff.value.trim() || 'Bedside Staff',
+                    notes: 'Service completed at bedside unit.'
+                })
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    loadBedServiceRequests(bedsideRoom.value.trim(), bedsideBed.value.trim());
+                }
+            });
+        };
+
+        function loadPatientDetails() {
+            const room = bedsideRoom.value.trim();
+            const bed = bedsideBed.value.trim();
+            let url = `/api/bedside/patient_info?room_no=${encodeURIComponent(room)}&bed_no=${encodeURIComponent(bed)}`;
+            if (activePatientId) {
+                url = `/api/bedside/patient_info?patient_id=${activePatientId}`;
+            }
+
+            fetch(url)
+                .then(res => res.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        const p = data.patient;
+                        currentPatientObj = p;
+                        activePatientId = p.id;
+                        bedsidePatientName.textContent = p.patient_name;
+                        bedsideWardLocation.textContent = `${p.ward || 'General Ward'} | Room ${p.room_no}, Bed ${p.bed_no}`;
+                        bedsideAgeGender.textContent = `${p.age || 'N/A'} yrs | ${p.gender || 'N/A'}`;
+                        if (bedsideIdType) bedsideIdType.textContent = p.id_card_type || 'Aadhar Card';
+                        if (bedsideIdNo) bedsideIdNo.textContent = p.id_card_no || p.aadhar_no || 'N/A';
+                        bedsideMobile.textContent = p.mobile_no || 'N/A';
+                        if (bedsideCause) bedsideCause.textContent = p.cause_of_admission || 'General Checkup';
+                        if (bedsideReferredBy) bedsideReferredBy.textContent = p.referred_by || 'Self / Walk-in';
+                        bedsideMacId.textContent = p.esp_mac || currentMac;
+
+                        updateHealthUI(p.health_condition);
+                        loadBedServiceRequests(p.room_no, p.bed_no);
+
+                        const bedsideCustomContainer = document.getElementById('bedside-custom-fields-container');
+                        if (bedsideCustomContainer) {
+                            let customObj = {};
+                            if (p.custom_fields) {
+                                try {
+                                    customObj = typeof p.custom_fields === 'object' ? p.custom_fields : JSON.parse(p.custom_fields);
+                                } catch (e) {}
+                            }
+                            const entries = Object.entries(customObj);
+                            if (entries.length > 0) {
+                                bedsideCustomContainer.innerHTML = `
+                                    <div class="detail-row">
+                                        <div class="detail-item" style="flex:1;">
+                                            <div class="detail-label">🏷️ Custom Parameters & Metadata</div>
+                                            <div class="detail-value" style="color:var(--accent-blue); font-size:0.9rem;">
+                                                ${entries.map(([k, v]) => `<strong>${k}:</strong> ${v}`).join(' | ')}
+                                            </div>
+                                        </div>
+                                    </div>
+                                `;
+                            } else {
+                                bedsideCustomContainer.innerHTML = '';
+                            }
+                        }
+                        
+                        bedsideRoom.value = p.room_no;
+                        bedsideBed.value = p.bed_no;
+
+                        let statusLabel = 'NORMAL / RESTING';
+                        if (p.status === 'NURSE_CALL') statusLabel = '🔔 NURSE CALLED';
+                        if (p.status === 'DOCTOR_CALL') statusLabel = '🚨 EMERGENCY DOCTOR CALL';
+                        if (p.status === 'IN_TREATMENT') statusLabel = '💊 IN TREATMENT';
+                        bedsideStatusBadge.className = `call-status-box ${p.status || 'NORMAL'}`;
+                        bedsideStatusBadge.textContent = statusLabel;
+
+                        populateSearchSelectOptions();
+                    }
+                });
+        }
+
+        // Room/Bed inputs manual change
+        bedsideRoom.addEventListener('change', () => { activePatientId = null; loadPatientDetails(); });
+        bedsideBed.addEventListener('change', () => { activePatientId = null; loadPatientDetails(); });
+
+        const ledIndicator = document.getElementById('led-indicator');
+        const ledStateLabel = document.getElementById('led-state-label');
+        const urgentBanner = document.getElementById('urgent-banner');
+
+        function updateLedState(state, callType) {
+            if (!ledIndicator || !ledStateLabel) return;
+            ledIndicator.className = 'led-indicator-box';
+            if (state === 'SOLID') {
+                if (callType === 'DOCTOR_CALL') {
+                    ledIndicator.classList.add('led-solid-doctor');
+                    ledStateLabel.textContent = 'STATE: SOLID RED GLOW (DOCTOR CALL ACTIVE)';
+                    ledStateLabel.style.color = '#ef4444';
+                } else if (callType === 'URGENT_EMERGENCY') {
+                    ledIndicator.classList.add('led-solid-urgent');
+                    ledStateLabel.textContent = 'STATE: SOLID URGENT RED GLOW (EMERGENCY)';
+                    ledStateLabel.style.color = '#f87171';
+                } else if (callType === 'GENERAL_HELP' || callType === 'BEDSIDE_CALL') {
+                    ledIndicator.classList.add('led-solid-help');
+                    ledStateLabel.textContent = 'STATE: SOLID BLUE GLOW (GENERAL HELP CALL ACTIVE)';
+                    ledStateLabel.style.color = '#60a5fa';
+                } else {
+                    ledIndicator.classList.add('led-solid-nurse');
+                    ledStateLabel.textContent = 'STATE: SOLID YELLOW GLOW (NURSE CALL ACTIVE)';
+                    ledStateLabel.style.color = '#facc15';
+                }
+            } else if (state === 'BLINKING') {
+                ledIndicator.classList.add('led-blinking');
+                ledStateLabel.textContent = 'STATE: BLINKING AMBER (STAFF ACKNOWLEDGED / IN PROGRESS)';
+                ledStateLabel.style.color = '#fbbf24';
+            } else {
+                ledIndicator.classList.add('led-off');
+                ledStateLabel.textContent = 'STATE: OFF (SERVED / RESTING)';
+                ledStateLabel.style.color = '#94a3b8';
+                if (urgentBanner) urgentBanner.classList.add('hidden');
+            }
+        }
+
+        loadSearchBedsOptions();
+        loadPatientDetails();
+
+        // Socket listeners
+        socket.on('patient_updated', () => {
+            loadPatientDetails();
+            loadSearchBedsOptions();
+        });
+        socket.on('call_updated', loadPatientDetails);
+
+        socket.on('led_state_changed', data => {
+            if (data.room_no === bedsideRoom.value.trim() && data.bed_no === bedsideBed.value.trim()) {
+                updateLedState(data.led_state, data.call_type);
+            }
+        });
+
+        socket.on('urgent_call_alert', data => {
+            if (data.room_no === bedsideRoom.value.trim() && data.bed_no === bedsideBed.value.trim()) {
+                if (urgentBanner) {
+                    urgentBanner.textContent = data.message || '🚨 URGENT ASSISTANCE REQUIRED!';
+                    urgentBanner.classList.remove('hidden');
+                }
+                updateLedState('SOLID', 'URGENT_EMERGENCY');
+            }
+        });
+
+        socket.on('service_request_created', data => {
+            if (data.room_no === bedsideRoom.value.trim() && data.bed_no === bedsideBed.value.trim()) {
+                loadBedServiceRequests(data.room_no, data.bed_no);
+            }
+        });
+
+        socket.on('notice_message_broadcast', data => {
+            appendChatMessage(data);
+        });
+
+        function sendCall(type) {
+            const room = bedsideRoom.value.trim() || '101';
+            const bed = bedsideBed.value.trim() || 'A1';
+
+            fetch('/api/bedside/call', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    room_no: room,
+                    bed_no: bed,
+                    call_type: type,
+                    device_id: `ESP_ROOM${room}_${bed}`,
+                    esp_mac: bedsideMacId.textContent
+                })
+            })
+            .then(res => res.json())
+            .then(data => {
+                const isUrgent = data.data && data.data.is_urgent;
+                if (isUrgent) {
+                    bedsideStatus.style.color = '#ef4444';
+                    bedsideStatus.textContent = data.data.message || '🚨 URGENT EMERGENCY ALERT BROADCASTED!';
+                    if (urgentBanner) {
+                        urgentBanner.textContent = data.data.message;
+                        urgentBanner.classList.remove('hidden');
+                    }
+                    updateLedState('SOLID', 'URGENT_EMERGENCY');
+                } else if (type === 'NURSE_CALL') {
+                    bedsideStatus.style.color = '#eab308';
+                    bedsideStatus.textContent = '🔔 Nurse Call sent! Assistance is on the way.';
+                    updateLedState('SOLID', 'NURSE_CALL');
+                } else if (type === 'DOCTOR_CALL') {
+                    bedsideStatus.style.color = '#ef4444';
+                    bedsideStatus.textContent = '🚨 EMERGENCY DOCTOR CALL SENT!';
+                    updateLedState('SOLID', 'DOCTOR_CALL');
+                } else {
+                    bedsideStatus.style.color = '#3b82f6';
+                    bedsideStatus.textContent = '🤝 General Help / Attendee Call sent!';
+                    updateLedState('SOLID', 'GENERAL_HELP');
+                }
+                loadPatientDetails();
+            });
+        }
+
+        document.getElementById('btn-nurse').addEventListener('click', () => sendCall('NURSE_CALL'));
+        document.getElementById('btn-doctor').addEventListener('click', () => sendCall('DOCTOR_CALL'));
+        document.getElementById('btn-help').addEventListener('click', () => sendCall('GENERAL_HELP'));
+        
+        document.getElementById('btn-reset').addEventListener('click', () => {
+            const room = bedsideRoom.value.trim();
+            const bed = bedsideBed.value.trim();
+            fetch('/api/bedside/reset', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ room_no: room, bed_no: bed })
+            })
+            .then(res => res.json())
+            .then(data => {
+                bedsideStatus.style.color = '#22c55e';
+                bedsideStatus.textContent = '🟢 Call reset & cleared directly from bedside console.';
+                if (urgentBanner) urgentBanner.classList.add('hidden');
+                updateLedState('OFF', 'NORMAL');
+                loadPatientDetails();
+            });
+        });
+
+        // Health Condition Modal Handlers
+        btnBedsideEditHealth.addEventListener('click', () => {
+            if (!currentPatientObj) return;
+            bedsideHealthPatientTitle.textContent = `Patient: ${currentPatientObj.patient_name} (Room ${currentPatientObj.room_no}-${currentPatientObj.bed_no})`;
+            bedsideHealthInput.value = currentPatientObj.health_condition !== undefined ? currentPatientObj.health_condition : 100;
+            bedsideHealthMsg.classList.add('hidden');
+            bedsideHealthModal.classList.remove('hidden');
+        });
+
+        btnCloseBedsideHealthModal.addEventListener('click', () => bedsideHealthModal.classList.add('hidden'));
+
+        btnSaveBedsideHealth.addEventListener('click', () => {
+            if (!currentPatientObj) return;
+            const healthVal = parseInt(bedsideHealthInput.value, 10);
+            const role = bedsideHealthRole.value;
+            const staffName = bedsideHealthStaff.value.trim() || 'Bedside Staff';
+
+            fetch('/api/patient/health', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    patient_id: currentPatientObj.id,
+                    health_condition: healthVal,
+                    staff_role: role,
+                    staff_name: staffName
+                })
+            })
+            .then(r => r.json().then(data => ({ status: r.status, body: data })))
+            .then(res => {
+                if (res.status === 200 && res.body.status === 'success') {
+                    bedsideHealthMsg.style.color = '#22c55e';
+                    bedsideHealthMsg.textContent = '✅ Health condition updated successfully!';
+                    bedsideHealthMsg.classList.remove('hidden');
+                    updateHealthUI(healthVal);
+                    setTimeout(() => bedsideHealthModal.classList.add('hidden'), 800);
+                    loadPatientDetails();
+                    loadSearchBedsOptions();
+                } else {
+                    bedsideHealthMsg.style.color = '#ef4444';
+                    bedsideHealthMsg.textContent = res.body.message || 'Authorization failed: Only Doctors and Nurses are permitted to edit health status.';
+                    bedsideHealthMsg.classList.remove('hidden');
+                }
+            })
+            .catch(err => {
+                bedsideHealthMsg.style.color = '#ef4444';
+                bedsideHealthMsg.textContent = 'Network or server error updating health.';
+                bedsideHealthMsg.classList.remove('hidden');
+            });
+        });
+
+        // Service Request Modal Handlers
+        function populateServiceModalPatientOptions() {
+            if (!servicePatientSelect) return;
+            const currentWardFilter = serviceWardFilter ? serviceWardFilter.value : '';
+            const wards = Array.from(new Set(allBedsData.map(b => b.ward).filter(Boolean)));
+            if (serviceWardFilter) {
+                serviceWardFilter.innerHTML = '<option value="">🏢 All Wards</option>' +
+                    wards.map(w => `<option value="${w}" ${w === currentWardFilter ? 'selected' : ''}>🏥 ${w}</option>`).join('');
+            }
+
+            let filtered = allBedsData;
+            if (currentWardFilter) {
+                filtered = allBedsData.filter(b => b.ward === currentWardFilter);
+            }
+
+            servicePatientSelect.innerHTML = '<option value="">-- Select Patient Bed --</option>' +
+                filtered.map(b => `<option value="${b.patient_id}" data-room="${b.room_no}" data-bed="${b.bed_no}" data-ward="${b.ward || 'General'}" ${activePatientId === b.patient_id ? 'selected' : ''}>🚪 Room ${b.room_no} - Bed ${b.bed_no}: ${b.patient_name} (${b.ward || 'General'})</option>`).join('');
+        }
+
+        if (serviceWardFilter) {
+            serviceWardFilter.addEventListener('change', populateServiceModalPatientOptions);
+        }
+
+        if (servicePatientSelect) {
+            servicePatientSelect.addEventListener('change', () => {
+                const opt = servicePatientSelect.options[servicePatientSelect.selectedIndex];
+                if (opt && opt.value) {
+                    if (serviceRoomNo) serviceRoomNo.value = opt.getAttribute('data-room') || '';
+                    if (serviceBedNo) serviceBedNo.value = opt.getAttribute('data-bed') || '';
+                    const pid = parseInt(opt.value, 10);
+                    const b = allBedsData.find(x => x.patient_id === pid);
+                    if (b && serviceRequestPatientInfo) {
+                        serviceRequestPatientInfo.textContent = `Target Patient: ${b.patient_name} (Ward: ${b.ward || 'General'}, Room ${b.room_no}-${b.bed_no})`;
+                    }
+                }
+            });
+        }
+
+        function openServiceModal() {
+            if (!serviceRequestModal) return;
+            serviceReqErrorMsg.classList.add('hidden');
+            populateServiceModalPatientOptions();
+
+            if (currentPatientObj) {
+                if (serviceRoomNo) serviceRoomNo.value = currentPatientObj.room_no;
+                if (serviceBedNo) serviceBedNo.value = currentPatientObj.bed_no;
+                if (servicePatientSelect) servicePatientSelect.value = currentPatientObj.id;
+                serviceRequestPatientInfo.textContent = `Target Patient: ${currentPatientObj.patient_name} (Ward: ${currentPatientObj.ward || 'General'}, Room ${currentPatientObj.room_no}-${currentPatientObj.bed_no})`;
+            }
+
+            serviceRequestModal.classList.remove('hidden');
+        }
+
+        if (btnBedsideDispatch) btnBedsideDispatch.addEventListener('click', openServiceModal);
+        if (btnBedsideDispatchInline) btnBedsideDispatchInline.addEventListener('click', openServiceModal);
+        if (btnCloseServiceRequestModal) btnCloseServiceRequestModal.addEventListener('click', () => serviceRequestModal.classList.add('hidden'));
+
+        if (servicePresetSelect) {
+            servicePresetSelect.addEventListener('change', () => {
+                if (servicePresetSelect.value !== 'Custom Instruction') {
+                    serviceInstructions.value = servicePresetSelect.value;
+                }
+            });
+        }
+
+        if (btnSendServiceRequest) {
+            btnSendServiceRequest.addEventListener('click', () => {
+                const targetPatientId = servicePatientSelect.value || activePatientId;
+                const room = serviceRoomNo ? serviceRoomNo.value.trim() : (bedsideRoom ? bedsideRoom.value.trim() : '101');
+                const bed = serviceBedNo ? serviceBedNo.value.trim() : (bedsideBed ? bedsideBed.value.trim() : 'A1');
+
+                if (!targetPatientId && (!room || !bed)) {
+                    serviceReqErrorMsg.textContent = 'Please select a target patient bed or enter Room & Bed number.';
+                    serviceReqErrorMsg.classList.remove('hidden');
+                    return;
+                }
+
+                const roleCbs = document.querySelectorAll('.target-role-cb:checked');
+                const roles = Array.from(roleCbs).map(cb => cb.value);
+                if (roles.length === 0) {
+                    serviceReqErrorMsg.textContent = 'Please select at least one recipient role (Doctor, Nurse, Helper).';
+                    serviceReqErrorMsg.classList.remove('hidden');
+                    return;
+                }
+
+                const instructions = serviceInstructions.value.trim() || servicePresetSelect.value || 'General Helper Assistance Required';
+                const mins = parseInt(serviceTargetMinutes.value, 10) || 15;
+
+                fetch('/api/service_request/create', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        patient_id: targetPatientId ? parseInt(targetPatientId, 10) : null,
+                        room_no: room,
+                        bed_no: bed,
+                        target_roles: roles,
+                        target_minutes: mins,
+                        instructions: instructions,
+                        requested_by: bedsideHealthStaff.value.trim() || 'Bedside Staff',
+                        requested_role: 'Nurse'
+                    })
+                })
+                .then(r => r.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        serviceRequestModal.classList.add('hidden');
+                        serviceInstructions.value = '';
+                        alert('✅ Service Request dispatched successfully!');
+                        loadBedServiceRequests(room, bed);
+                    } else {
+                        serviceReqErrorMsg.textContent = data.message || 'Failed to dispatch request.';
+                        serviceReqErrorMsg.classList.remove('hidden');
+                    }
+                });
+            });
+        }
+
+        // Notice Board Modal Handlers
+        function openNoticeModal() {
+            if (!noticeBoardModal) return;
+            loadChatMessages();
+            noticeBoardModal.classList.remove('hidden');
+        }
+
+        if (btnBedsideNotice) btnBedsideNotice.addEventListener('click', openNoticeModal);
+        if (btnCloseNoticeBoardModal) btnCloseNoticeBoardModal.addEventListener('click', () => noticeBoardModal.classList.add('hidden'));
+
+        function loadChatMessages() {
+            const dept = chatFilterDept ? chatFilterDept.value : 'ALL';
+            fetch(`/api/chat/messages?dept=${encodeURIComponent(dept)}`)
+                .then(r => r.json())
+                .then(msgs => {
+                    chatMessagesContainer.innerHTML = msgs.length === 0 ? 
+                        '<div style="text-align: center; color: var(--text-secondary); padding: 10px;">No messages found in this department feed.</div>' :
+                        msgs.map(m => renderChatMessage(m)).join('');
+                    chatMessagesContainer.scrollTop = chatMessagesContainer.scrollHeight;
+                });
+        }
+
+        if (chatFilterDept) chatFilterDept.addEventListener('change', loadChatMessages);
+
+        function renderChatMessage(m) {
+            return `
+                <div style="background: rgba(255,255,255,0.03); border-left: 3px solid var(--accent-purple); padding: 8px 12px; border-radius: 4px;">
+                    <div style="display:flex; justify-content:space-between; font-size:0.8rem; margin-bottom:2px;">
+                        <span style="font-weight:bold; color:var(--accent-blue);">${m.sender_name} (${m.sender_role})</span>
+                        <span style="color:var(--text-secondary);">${m.created_at}</span>
+                    </div>
+                    <div style="font-size:0.85rem; color:var(--accent-purple); font-weight:600; margin-bottom:4px;">
+                        📍 Target: ${m.target_dept}
+                    </div>
+                    <div style="font-size:0.9rem; color:var(--text-primary);">
+                        ${m.message}
+                    </div>
+                </div>
+            `;
+        }
+
+        function appendChatMessage(m) {
+            if (!chatMessagesContainer) return;
+            const currentFilter = chatFilterDept ? chatFilterDept.value : 'ALL';
+            if (currentFilter === 'ALL' || m.target_dept === currentFilter || m.target_dept === 'All Departments') {
+                const div = document.createElement('div');
+                div.innerHTML = renderChatMessage(m);
+                chatMessagesContainer.appendChild(div.firstElementChild);
+                chatMessagesContainer.scrollTop = chatMessagesContainer.scrollHeight;
+            }
+        }
+
+        if (btnSendChatMsg) {
+            btnSendChatMsg.addEventListener('click', () => {
+                const msg = chatMessageText.value.trim();
+                if (!msg) return;
+
+                fetch('/api/chat/send', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        sender_role: chatSenderRole.value,
+                        sender_name: chatSenderName.value.trim() || 'Bedside Staff',
+                        target_dept: chatTargetDept.value,
+                        message: msg
+                    })
+                })
+                .then(r => r.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        chatMessageText.value = '';
+                    }
+                });
+            });
+        }
+
+        // MAC Allocation Modal Handlers
+        btnOpenMacModal.addEventListener('click', () => {
+            allocPassword.value = '';
+            allocErrorMsg.classList.add('hidden');
+            allocMacAddress.value = bedsideMacId.textContent;
+            allocRoomNo.value = bedsideRoom.value;
+            allocBedNo.value = bedsideBed.value;
+
+            fetch('/api/patients')
+                .then(r => r.json())
+                .then(patients => {
+                    allocPatientSelect.innerHTML = '<option value="">-- Select Patient to Allocate --</option>' + 
+                        patients.map(p => `<option value="${p.id}" ${p.id === activePatientId ? 'selected' : ''}>${p.patient_name} (Ward: ${p.ward}, Room ${p.room_no}-${p.bed_no})</option>`).join('');
+                });
+
+            macModal.classList.remove('hidden');
+        });
+
+        btnCloseMacModal.addEventListener('click', () => macModal.classList.add('hidden'));
+
+        allocPatientSelect.addEventListener('change', () => {
+            const pId = allocPatientSelect.value;
+            if (pId) {
+                fetch(`/api/bedside/patient_info?patient_id=${pId}`)
+                    .then(r => r.json())
+                    .then(data => {
+                        if (data.status === 'success') {
+                            allocRoomNo.value = data.patient.room_no;
+                            allocBedNo.value = data.patient.bed_no;
+                            if (data.patient.esp_mac && data.patient.esp_mac !== 'N/A') {
+                                allocMacAddress.value = data.patient.esp_mac;
+                            }
+                        }
+                    });
+            }
+        });
+
+        btnSubmitAlloc.addEventListener('click', () => {
+            const pwd = allocPassword.value.trim();
+            const mac = allocMacAddress.value.trim();
+            const room = allocRoomNo.value.trim();
+            const bed = allocBedNo.value.trim();
+            const pid = allocPatientSelect.value;
+
+            if (!pwd) {
+                allocErrorMsg.textContent = 'Please enter staff password.';
+                allocErrorMsg.classList.remove('hidden');
+                return;
+            }
+
+            fetch('/api/bedside/allocate_mac', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    password: pwd,
+                    mac_address: mac,
+                    room_no: room,
+                    bed_no: bed,
+                    patient_id: pid || null
+                })
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    localStorage.setItem('assigned_esp_mac', mac);
+                    currentMac = mac;
+                    activePatientId = data.patient.id;
+                    macModal.classList.add('hidden');
+                    alert(`✅ ${data.message}`);
+                    loadPatientDetails();
+                    loadSearchBedsOptions();
+                } else {
+                    allocErrorMsg.textContent = data.message || 'Allocation failed.';
+                    allocErrorMsg.classList.remove('hidden');
+                }
+            })
+            .catch(err => {
+                allocErrorMsg.textContent = 'Server error during allocation.';
+                allocErrorMsg.classList.remove('hidden');
+            });
+        });
+    </script>
+</body>
+</html>

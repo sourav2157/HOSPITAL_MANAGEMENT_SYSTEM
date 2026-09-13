@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mobile Client - Data Pusher</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div class="title-area">
+                <h1>📱 Mobile / Browser Client</h1>
+                <div class="subtitle">Browser Device Data Pusher</div>
+            </div>
+            <div>
+                <a href="/" class="nav-link" style="margin-right: 15px;">🖥️ Master Display</a>
+                <div class="status-badge">
+                    <span id="ws-dot" class="dot"></span>
+                    <span id="ws-status">Connecting...</span>
+                </div>
+            </div>
+        </header>
+
+        <div class="client-box">
+            <div class="form-group">
+                <label>Device ID:</label>
+                <input type="text" id="device-id" value="MOBILE_001">
+            </div>
+
+            <div class="form-group">
+                <label>Device Type:</label>
+                <input type="text" value="browser" disabled style="opacity: 0.7;">
+            </div>
+
+            <div class="form-group">
+                <label>Hardware / Browser LocalStorage ID:</label>
+                <input type="text" id="local-storage-id" readonly style="font-family: monospace; color: var(--accent-purple);">
+            </div>
+
+            <div class="form-group">
+                <label>Telemetry Payload (JSON or Text):</label>
+                <textarea id="payload-input" rows="4">{"sensor": "accelerometer", "value": 9.81, "battery": 85}</textarea>
+            </div>
+
+            <button class="btn" id="btn-send">📤 Push Data Now</button>
+            <button class="btn btn-secondary" id="btn-auto">⚡ Start Auto-Push (Every 3s)</button>
+
+            <div id="status-log" style="margin-top: 15px; font-size: 0.85rem; color: var(--text-secondary); text-align: center;"></div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/client.js') }}"></script>
+</body>
+</html>

@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>General Helper & Ward Attendee Portal</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+    <style>
+        .helper-card {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 16px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.15);
+            transition: transform 0.2s, border-color 0.2s;
+        }
+        .helper-card:hover {
+            transform: translateY(-2px);
+            border-color: var(--accent-blue);
+        }
+        .helper-card.status-ACTIVE {
+            border-left: 5px solid #3b82f6;
+            animation: pulse-blue 2s infinite;
+        }
+        .helper-card.status-ACKNOWLEDGED {
+            border-left: 5px solid #eab308;
+        }
+        .helper-card.status-RESOLVED {
+            border-left: 5px solid #22c55e;
+            opacity: 0.85;
+        }
+        @keyframes pulse-blue {
+            0% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.4); }
+            70% { box-shadow: 0 0 0 10px rgba(59, 130, 246, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0); }
+        }
+        .origin-badge {
+            display: inline-block;
+            padding: 3px 8px;
+            border-radius: 6px;
+            font-size: 0.75rem;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+        .origin-BEDSIDE_CALL {
+            background: rgba(59, 130, 246, 0.15);
+            color: #60a5fa;
+            border: 1px solid rgba(59, 130, 246, 0.3);
+        }
+        .origin-STAFF_DISPATCH {
+            background: rgba(168, 85, 247, 0.15);
+            color: #c084fc;
+            border: 1px solid rgba(168, 85, 247, 0.3);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Emergency / Call Alert Banner -->
+        <div id="helper-banner" class="emergency-banner hidden" style="background: linear-gradient(90deg, #1e3a8a 0%, #3b82f6 100%);">
+            <div class="alert-content">
+                <span class="alert-icon">🤝</span>
+                <span id="helper-alert-message" class="alert-message">GENERAL HELP REQUEST ACTIVE!</span>
+            </div>
+            <div class="banner-actions">
+                <button id="btn-silence-audio" class="btn-banner-audio">🔊 Mute Sound</button>
+            </div>
+        </div>
+
+        <header>
+            <div class="title-area">
+                <h1>🤝 General Helper & Ward Attendee Portal</h1>
+                <div class="subtitle">Patient Assistance Calls, Doctor/Nurse Staff Dispatches & Service Audit Logs</div>
+            </div>
+            <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+                <div id="user-profile-badge" style="background: var(--card-bg); border: 1px solid var(--border-color); padding: 6px 12px; border-radius: 8px; font-size: 0.85rem; display: flex; align-items: center; gap: 8px;">
+                    <span id="current-user-role" class="role-tag Doctor">Helper</span>
+                    <strong id="current-user-name">Helper Mark</strong>
+                </div>
+
+                <button id="btn-open-helper-reports" class="btn-small" style="background: var(--accent-purple); color: #fff;">📊 Helper Reports</button>
+                <a href="/" class="nav-link">🖥️ Staff Dashboard</a>
+                <a href="/bedside" class="nav-link" target="_blank">📱 Bedside Unit</a>
+                <button id="btn-logout" class="btn-small" style="background: var(--border-color); color: #fff;">🚪 Log Out</button>
+                <div class="status-badge">
+                    <span id="ws-dot" class="dot"></span>
+                    <span id="ws-status">Connecting...</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- Summary Stats Grid -->
+        <div class="stats-grid">
+            <div class="stat-card nurse-card">
+                <div class="stat-title">Active Help Requests</div>
+                <div class="stat-value" id="stat-active-help">0</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-title">Bedside Calls</div>
+                <div class="stat-value" id="stat-bedside-help">0</div>
+            </div>
+            <div class="stat-card urgent-card">
+                <div class="stat-title">Staff Dispatches</div>
+                <div class="stat-value" id="stat-staff-dispatches">0</div>
+            </div>
+            <div class="stat-card pinned-card">
+                <div class="stat-title">Tasks Resolved Today</div>
+                <div class="stat-value" id="stat-resolved-today">0</div>
+            </div>
+        </div>
+
+        <!-- Filter & Search Section -->
+        <div class="filter-section">
+            <div class="controls-bar">
+                <div class="search-box">
+                    <input type="text" id="search-input" placeholder="🔍 Search by patient, room, bed, ward, assigned staff, or instructions...">
+                    <button id="search-clear-btn" class="search-clear-btn hidden" title="Clear Search">&times;</button>
+                </div>
+                <div class="filter-group">
+                    <label>Ward:</label>
+                    <select id="filter-ward">
+                        <option value="ALL">All Wards</option>
+                        <option value="General Ward A">General Ward A</option>
+                        <option value="General Ward B">General Ward B</option>
+                        <option value="ICU">ICU</option>
+                        <option value="Cardiology">Cardiology</option>
+                        <option value="Pediatrics">Pediatrics</option>
+                        <option value="Emergency Ward">Emergency Ward</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label>Status:</label>
+                    <select id="filter-status">
+                        <option value="ACTIVE_ALL">Active & Pending Tasks</option>
+                        <option value="ACTIVE">🔔 Active (Unattended)</option>
+                        <option value="ACKNOWLEDGED">⏳ In Progress / Acknowledged</option>
+                        <option value="ALL">🌐 All History (Including Resolved)</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <!-- Helper Cards Container -->
+        <div class="section-title">
+            <span>📋 General Assistance Tasks & Attendee Work Queue</span>
+        </div>
+        <div class="devices-grid" id="helper-cards-container">
+            <div class="empty-state">Loading assistance tasks...</div>
+        </div>
+    </div>
+
+    <!-- Modal: Resolve Task -->
+    <div id="resolve-task-modal" class="modal-overlay hidden">
+        <div class="modal-content modal-small">
+            <div class="modal-header">
+                <h2>✅ Complete & Resolve Assistance Task</h2>
+                <button class="close-modal" id="btn-close-resolve-modal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div id="resolve-task-info" style="margin-bottom: 12px; font-weight: bold; color: var(--accent-blue);"></div>
+                <div class="form-group">
+                    <label>Completion Notes / Action Done:</label>
+                    <textarea id="resolve-notes" rows="3" placeholder="e.g. Wheelchair assistance provided to Radiology. Patient returned safely to Bed A1."></textarea>
+                </div>
+                <button id="btn-submit-resolve" class="btn" style="background: var(--accent-green); color: #0f172a; font-weight: bold;">Confirm & Clear Task</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: General Helper Service Reports Portal -->
+    <div id="helper-reports-modal" class="modal-overlay hidden">
+        <div class="modal-content modal-large">
+            <div class="modal-header">
+                <h2>📊 General Helper Service & Audit Reports</h2>
+                <button class="close-modal" id="btn-close-helper-reports-modal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="add-comment-box" style="margin-bottom: 20px;">
+                    <h3>🔍 Filter Helper Service Logs</h3>
+                    <div class="form-row">
+                        <div class="form-group flex-1">
+                            <label>Start Date:</label>
+                            <input type="date" id="rep-start-date">
+                        </div>
+                        <div class="form-group flex-1">
+                            <label>End Date:</label>
+                            <input type="date" id="rep-end-date">
+                        </div>
+                        <div class="form-group flex-1">
+                            <label>Ward / Department:</label>
+                            <select id="rep-ward">
+                                <option value="ALL">All Wards</option>
+                                <option value="General Ward A">General Ward A</option>
+                                <option value="General Ward B">General Ward B</option>
+                                <option value="ICU">ICU</option>
+                                <option value="Cardiology">Cardiology</option>
+                                <option value="Pediatrics">Pediatrics</option>
+                                <option value="Emergency Ward">Emergency Ward</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div style="display: flex; gap: 10px; margin-top: 15px;">
+                        <button id="btn-run-helper-report" class="btn flex-1">🔍 Run Query & Preview Report</button>
+                        <button id="btn-download-helper-csv" class="btn flex-1" style="background: var(--accent-green); color: #0f172a; font-weight: bold;">📥 Download CSV Statement</button>
+                    </div>
+                </div>
+
+                <div class="table-container" style="max-height: 350px; overflow-y: auto;">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Time</th>
+                                <th>Patient Name</th>
+                                <th>Ward</th>
+                                <th>Rm/Bed</th>
+                                <th>Origin</th>
+                                <th>Assigned By</th>
+                                <th>Instructions / Notes</th>
+                                <th>Status</th>
+                                <th>Attended By</th>
+                            </tr>
+                        </thead>
+                        <tbody id="helper-report-body">
+                            <tr><td colspan="9" style="text-align:center; color: var(--text-secondary);">Click "Run Query & Preview Report" to view logs.</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/helper.js') }}"></script>
+</body>
+</html>

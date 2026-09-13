@@ -1,0 +1,824 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hospital Patient Management & Nurse Call System</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+    <style>
+        /* Role Color Segregation & Multi-Team 1-Second Color Cycling Animations */
+        @keyframes multiTeam2Cycle {
+            0%, 49% { border-color: #3b82f6; box-shadow: 0 0 10px rgba(59, 130, 246, 0.6); }
+            50%, 100% { border-color: #eab308; box-shadow: 0 0 10px rgba(234, 179, 8, 0.6); }
+        }
+        @keyframes multiTeam3Cycle {
+            0%, 32% { border-color: #3b82f6; box-shadow: 0 0 12px rgba(59, 130, 246, 0.7); }
+            33%, 65% { border-color: #eab308; box-shadow: 0 0 12px rgba(234, 179, 8, 0.7); }
+            66%, 100% { border-color: #22c55e; box-shadow: 0 0 12px rgba(34, 197, 94, 0.7); }
+        }
+        @keyframes pulseDoctorBlue {
+            0%, 100% { border-color: #3b82f6; box-shadow: 0 0 8px rgba(59, 130, 246, 0.4); }
+            50% { border-color: #60a5fa; box-shadow: 0 0 14px rgba(59, 130, 246, 0.8); }
+        }
+        @keyframes pulseNurseYellow {
+            0%, 100% { border-color: #eab308; box-shadow: 0 0 8px rgba(234, 179, 8, 0.4); }
+            50% { border-color: #fbbf24; box-shadow: 0 0 14px rgba(234, 179, 8, 0.8); }
+        }
+        @keyframes pulseHelperGreen {
+            0%, 100% { border-color: #22c55e; box-shadow: 0 0 8px rgba(34, 197, 94, 0.4); }
+            50% { border-color: #4ade80; box-shadow: 0 0 14px rgba(34, 197, 94, 0.8); }
+        }
+
+        .task-box-doctor {
+            border: 2px solid #3b82f6 !important;
+            animation: pulseDoctorBlue 1.5s infinite !important;
+        }
+        .task-box-nurse {
+            border: 2px solid #eab308 !important;
+            animation: pulseNurseYellow 1.5s infinite !important;
+        }
+        .task-box-helper {
+            border: 2px solid #22c55e !important;
+            animation: pulseHelperGreen 1.5s infinite !important;
+        }
+        .task-multi-2team {
+            border: 2.5px solid #3b82f6 !important;
+            animation: multiTeam2Cycle 2s infinite step-end !important;
+        }
+        .task-multi-3team {
+            border: 2.5px solid #3b82f6 !important;
+            animation: multiTeam3Cycle 3s infinite step-end !important;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Emergency Alarm Banner -->
+        <div id="emergency-banner" class="emergency-banner hidden">
+            <div class="alert-content">
+                <span class="alert-icon">🚨</span>
+                <span id="alert-message" class="alert-message">PATIENT EMERGENCY CALL ACTIVE!</span>
+            </div>
+            <div class="banner-actions">
+                <button id="btn-silence-audio" class="btn-banner-audio">🔊 Mute Sound</button>
+            </div>
+        </div>
+
+        <header>
+            <div class="title-area">
+                <h1>🏥 Hospital Patient Management</h1>
+                <div class="subtitle">WiFi Bedside Call, Call Alarms, Prescriptions & Staff Record Logs</div>
+            </div>
+            <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+                <!-- Logged In User Profile Badge -->
+                <div id="user-profile-badge" style="background: var(--card-bg); border: 1px solid var(--border-color); padding: 6px 12px; border-radius: 8px; font-size: 0.85rem; display: flex; align-items: center; gap: 8px;">
+                    <span id="current-user-role" class="role-tag Doctor">Staff</span>
+                    <strong id="current-user-name">Logged In User</strong>
+                </div>
+
+                <button id="btn-open-service-dispatch" class="btn-small" style="background: var(--accent-blue); color: #0f172a; font-weight: bold;">📢 Dispatch Service Request</button>
+                <button id="btn-open-notice-board" class="btn-small" style="background: rgba(168, 85, 247, 0.2); border: 1px solid var(--accent-purple); color: #c084fc; font-weight: bold;">💬 Notice Board & Chat</button>
+                <button id="btn-open-reports" class="btn-small" style="background: var(--accent-purple); color: #fff;">📊 Reports & Analytics</button>
+                <button id="btn-add-patient" class="btn-small">+ Register Patient</button>
+                <button id="btn-logout" class="btn-small" style="background: var(--border-color); color: #fff;">🚪 Log Out</button>
+                <a href="/bedside" class="nav-link" target="_blank">📱 Soft Bedside Unit</a>
+                <a href="/helper" class="nav-link" target="_blank" style="background: rgba(59, 130, 246, 0.15); border-color: rgba(59, 130, 246, 0.4);">🤝 General Helper Portal</a>
+                <div class="status-badge">
+                    <span id="ws-dot" class="dot"></span>
+                    <span id="ws-status">Connecting...</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- Summary Stats Grid -->
+        <div class="stats-grid">
+            <div class="stat-card urgent-card">
+                <div class="stat-title">Active Emergency Calls</div>
+                <div class="stat-value" id="stat-doctor-calls">0</div>
+            </div>
+            <div class="stat-card nurse-card">
+                <div class="stat-title">Active Nurse Calls</div>
+                <div class="stat-value" id="stat-nurse-calls">0</div>
+            </div>
+            <div class="stat-card pinned-card">
+                <div class="stat-title">Starred Patients</div>
+                <div class="stat-value" id="stat-pinned-count">0</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-title">Active Inpatients</div>
+                <div class="stat-value" id="stat-total-patients">0</div>
+            </div>
+        </div>
+
+        <!-- Extensive Filter & Search Controls -->
+        <div class="filter-section">
+            <!-- Quick Preset Tabs -->
+            <div class="filter-tabs" id="preset-tabs">
+                <button class="tab-btn active" data-tab="MY_PATIENTS">🩺 My Patients</button>
+                <button class="tab-btn" data-tab="PINNED">⭐ Starred Only</button>
+                <button class="tab-btn" data-tab="ALL">🌐 All Inpatients</button>
+                <button class="tab-btn" data-tab="ACTIVE_CALLS">🚨 Active Calls</button>
+                <button class="tab-btn" data-tab="IN_TREATMENT">💊 In Treatment</button>
+                <button class="tab-btn" data-tab="ARCHIVED">✅ Discharged History</button>
+            </div>
+
+            <div class="controls-bar">
+                <div class="search-box">
+                    <input type="text" id="search-input" placeholder="🔍 Search by name, room, bed, ward, doctor, age, status, ESP MAC...">
+                    <button id="search-clear-btn" class="search-clear-btn hidden" title="Clear Search">&times;</button>
+                </div>
+                <div class="filter-group">
+                    <label>Ward / Dept:</label>
+                    <select id="filter-ward">
+                        <option value="ALL">All Wards</option>
+                        <option value="General Ward A">General Ward A</option>
+                        <option value="General Ward B">General Ward B</option>
+                        <option value="ICU">ICU</option>
+                        <option value="Cardiology">Cardiology</option>
+                        <option value="Pediatrics">Pediatrics</option>
+                        <option value="Emergency Ward">Emergency Ward</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label>Status:</label>
+                    <select id="filter-status">
+                        <option value="ALL">All Statuses</option>
+                        <option value="DOCTOR_CALL">🚨 Emergency Call</option>
+                        <option value="NURSE_CALL">🔔 Nurse Call</option>
+                        <option value="IN_TREATMENT">💊 In Treatment</option>
+                        <option value="NORMAL">🟢 Normal / Resting</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label>Demographics:</label>
+                    <select id="filter-age-group">
+                        <option value="ALL">All Ages</option>
+                        <option value="PEDIATRIC">👶 Pediatric (&lt;18 yrs)</option>
+                        <option value="ADULT">👤 Adult (18-60 yrs)</option>
+                        <option value="SENIOR">👴 Senior (&gt;60 yrs)</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label>Sort By:</label>
+                    <select id="sort-by">
+                        <option value="PRIORITY">🚨 Call Urgency & Starred</option>
+                        <option value="ROOM_ASC">🚪 Room No. (101 ➔ 999)</option>
+                        <option value="ROOM_DESC">🚪 Room No. (999 ➔ 101)</option>
+                        <option value="NAME_ASC">👤 Patient Name (A ➔ Z)</option>
+                        <option value="NAME_DESC">👤 Patient Name (Z ➔ A)</option>
+                        <option value="DATE_DESC">🕒 Admission (Newest First)</option>
+                        <option value="DATE_ASC">🕒 Admission (Oldest First)</option>
+                        <option value="AGE_ASC">🎂 Age (Youngest First)</option>
+                        <option value="AGE_DESC">🎂 Age (Oldest First)</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Filter Results Status Bar -->
+            <div class="filter-results-bar">
+                <span id="results-count-badge" class="results-count-badge">Showing 0 patients</span>
+                <button id="btn-reset-filters" class="btn-reset-filters hidden">🔄 Reset All Filters</button>
+            </div>
+        </div>
+
+        <!-- Patient Cards Grid -->
+        <div class="section-title">
+            <span>🛏️ Bedside Patient Units & Ward Status</span>
+        </div>
+        <div class="devices-grid" id="patients-container">
+            <div class="empty-state">Loading patient records...</div>
+        </div>
+    </div>
+
+    <!-- Modal: Record Book & Action Timeline -->
+    <div id="record-book-modal" class="modal-overlay hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>📖 Patient Action Record Book</h2>
+                <button class="close-modal" id="btn-close-modal">&times;</button>
+            </div>
+            <div class="modal-patient-info" id="modal-patient-info"></div>
+
+            <div class="modal-body">
+                <!-- Add Comment Form -->
+                <div class="add-comment-box">
+                    <h3>✍️ Add Staff Entry / Clinical Note</h3>
+                    <div class="form-row">
+                        <div class="form-group flex-1">
+                            <label>Staff Role:</label>
+                            <input type="text" id="comment-staff-role" readonly style="background: rgba(255,255,255,0.05);">
+                        </div>
+                        <div class="form-group flex-1">
+                            <label>Staff Name:</label>
+                            <input type="text" id="comment-staff-name" readonly style="background: rgba(255,255,255,0.05);">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>Action Note / Observation:</label>
+                        <textarea id="comment-text" rows="3" placeholder="Enter clinical observations, notes, or treatment details..."></textarea>
+                    </div>
+                    <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                        <button id="btn-submit-comment" class="btn" style="flex: 1;">Post to Record Book</button>
+                        <button id="btn-submit-served" class="btn" style="flex: 1; background: #22c55e; color: #ffffff; font-weight: bold;">📝 Submit & Served (Turn LED Off)</button>
+                    </div>
+                </div>
+
+                <h3 style="margin-bottom: 15px;">⏱️ Timeline of Events</h3>
+                <div class="timeline" id="timeline-container">
+                    <div class="empty-state">Loading timeline...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Doctor Prescription Rx -->
+    <div id="prescription-modal" class="modal-overlay hidden">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>💊 Doctor Digital Prescription (Rx)</h2>
+                <button class="close-modal" id="btn-close-rx-modal">&times;</button>
+            </div>
+            <div class="modal-patient-info" id="rx-patient-info"></div>
+            <div class="modal-body">
+                <div class="add-comment-box">
+                    <h3>✍️ Issue New Prescription</h3>
+                    <div class="form-row">
+                        <div class="form-group flex-1">
+                            <label>Doctor Name:</label>
+                            <input type="text" id="rx-doctor-name" readonly style="background: rgba(255,255,255,0.05);">
+                        </div>
+                        <div class="form-group flex-1">
+                            <label>Medication Name & Strength:</label>
+                            <input type="text" id="rx-medication" placeholder="Amoxicillin 500mg / Paracetamol">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group flex-1">
+                            <label>Dosage & Frequency:</label>
+                            <input type="text" id="rx-dosage" placeholder="1 tablet 3x daily after meals">
+                        </div>
+                        <div class="form-group flex-1">
+                            <label>Duration:</label>
+                            <input type="text" id="rx-duration" placeholder="5 days / 7 days">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label>Doctor Special Instructions:</label>
+                        <input type="text" id="rx-instructions" placeholder="Take with full glass of water. Avoid alcohol.">
+                    </div>
+                    <button id="btn-save-rx" class="btn" style="background: var(--accent-blue); color: #0f172a; font-weight: bold;">Issue & Log Prescription</button>
+                </div>
+
+                <h3 style="margin-bottom: 15px;">📋 Prescriptions History</h3>
+                <div id="rx-history-container" class="timeline"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Transfer Ward / Room -->
+    <div id="transfer-modal" class="modal-overlay hidden">
+        <div class="modal-content modal-small">
+            <div class="modal-header">
+                <h2>🔄 Transfer Patient Ward / Room</h2>
+                <button class="close-modal" id="btn-close-transfer-modal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>Target Ward Name:</label>
+                    <select id="transfer-ward">
+                        <option value="General Ward A">General Ward A</option>
+                        <option value="General Ward B">General Ward B</option>
+                        <option value="ICU">ICU (Intensive Care Unit)</option>
+                        <option value="Cardiology">Cardiology Ward</option>
+                        <option value="Pediatrics">Pediatrics</option>
+                        <option value="Emergency Ward">Emergency Ward</option>
+                    </select>
+                </div>
+                <div class="form-row">
+                    <div class="form-group flex-1">
+                        <label>New Room Number:</label>
+                        <input type="text" id="transfer-room-no" placeholder="201">
+                    </div>
+                    <div class="form-group flex-1">
+                        <label>New Bed Number:</label>
+                        <input type="text" id="transfer-bed-no" placeholder="B1">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Staff Name Authorized Transfer:</label>
+                    <input type="text" id="transfer-staff-name" placeholder="Nurse Sarah / Dr. Smith">
+                </div>
+                <button id="btn-save-transfer" class="btn" style="margin-top: 10px;">Confirm Ward Transfer</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Status Change / Discharge -->
+    <div id="status-modal" class="modal-overlay hidden">
+        <div class="modal-content modal-small">
+            <div class="modal-header">
+                <h2>🏁 Update Status / Discharge Patient</h2>
+                <button class="close-modal" id="btn-close-status-modal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>Select Outcome / Status:</label>
+                    <select id="status-select">
+                        <option value="DISCHARGED">✅ Treatment Over & Discharged</option>
+                        <option value="DECEASED">⚰️ Patient Deceased (Died)</option>
+                        <option value="IN_TREATMENT">💊 In Active Treatment</option>
+                        <option value="NORMAL">🟢 Normal / Resting in Bed</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Authorized Staff Name:</label>
+                    <input type="text" id="status-staff-name" placeholder="Dr. Smith">
+                </div>
+                <button id="btn-save-status" class="btn" style="margin-top: 10px;">Update Patient Lifecycle Status</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Multi-Recipient Service Request (Doctor, Nurse, Helper & SLA) -->
+    <div id="service-request-modal" class="modal-overlay hidden">
+        <div class="modal-content modal-small">
+            <div class="modal-header">
+                <h2>📢 Create Multi-Recipient Service Request</h2>
+                <button class="close-modal" id="btn-close-service-request-modal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div id="service-request-patient-info" style="margin-bottom: 12px; font-weight: bold; color: var(--accent-blue);"></div>
+                
+                <div class="form-group">
+                    <label style="display:block; font-weight:bold; margin-bottom:6px; color:var(--accent-blue);">🏥 Select Target Ward, Room & Bed Location:</label>
+                    <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:8px;">
+                        <select id="service-ward-filter" style="flex:1; min-width:130px; font-weight:bold; padding:8px 10px; border-radius:8px; background:rgba(255,255,255,0.05); color:var(--text-primary); border:1px solid var(--border-color);">
+                            <option value="">🏢 All Wards</option>
+                        </select>
+                        <select id="service-patient-select" style="flex:2; min-width:200px; font-weight:bold; padding:8px 10px; border-radius:8px; background:rgba(255,255,255,0.05); color:var(--text-primary); border:1px solid var(--border-color);">
+                            <option value="">-- Select Patient Bed --</option>
+                        </select>
+                    </div>
+                    <div style="display:flex; gap:10px;">
+                        <div style="flex:1;">
+                            <label style="font-size:0.78rem; color:var(--text-secondary); font-weight:bold;">Room No:</label>
+                            <input type="text" id="service-room-no" placeholder="e.g. 101" style="font-weight:bold; text-align:center; padding:6px 10px; border-radius:6px; background:rgba(255,255,255,0.05); color:var(--text-primary); border:1px solid var(--border-color); width:100%;">
+                        </div>
+                        <div style="flex:1;">
+                            <label style="font-size:0.78rem; color:var(--text-secondary); font-weight:bold;">Bed No:</label>
+                            <input type="text" id="service-bed-no" placeholder="e.g. A1" style="font-weight:bold; text-align:center; padding:6px 10px; border-radius:6px; background:rgba(255,255,255,0.05); color:var(--text-primary); border:1px solid var(--border-color); width:100%;">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>Select Target Recipients (Single, Multiple or ALL):</label>
+                    <div style="display: flex; gap: 15px; background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); padding: 10px; border-radius: 8px;">
+                        <label style="cursor: pointer; display: flex; align-items: center; gap: 6px; font-weight: bold;">
+                            <input type="checkbox" class="target-role-cb" value="Doctor"> 🩺 Doctor
+                        </label>
+                        <label style="cursor: pointer; display: flex; align-items: center; gap: 6px; font-weight: bold;">
+                            <input type="checkbox" class="target-role-cb" value="Nurse"> 🔔 Nurse
+                        </label>
+                        <label style="cursor: pointer; display: flex; align-items: center; gap: 6px; font-weight: bold;">
+                            <input type="checkbox" class="target-role-cb" value="General Helper" checked> 🤝 General Helper
+                        </label>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label>Target SLA Timeframe (Served within X mins):</label>
+                    <select id="service-target-minutes">
+                        <option value="5">⚡ 5 Minutes (Urgent Response)</option>
+                        <option value="10">⏱️ 10 Minutes</option>
+                        <option value="15" selected>🕒 15 Minutes (Default SLA)</option>
+                        <option value="30">⏳ 30 Minutes</option>
+                        <option value="60">📅 60 Minutes (Standard Task)</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label>Quick Preset / Instruction Template:</label>
+                    <select id="service-preset-select">
+                        <option value="Custom Instruction">✏️ Custom Specific Instructions</option>
+                        <option value="Assist patient with Wheelchair to Radiology/Lab">♿ Wheelchair Assistance for Patient</option>
+                        <option value="Provide Drinking Water / Food Tray">🥛 Drinking Water / Food Tray Assistance</option>
+                        <option value="Bed Linen Change / Ward Cleaning">🛏️ Bedding Linen Change / Cleaning</option>
+                        <option value="Accompany Patient for Restroom Assistance">🚶 Patient Mobility / Restroom Support</option>
+                        <option value="Urgent Vital Signs & BP Check Required">📊 Vital Signs & BP Monitoring Check</option>
+                        <option value="IV Drip Refill / Medication Check">💊 IV Drip / Medication Inspection</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Specific Instructions / Comments:</label>
+                    <textarea id="service-instructions" rows="3" placeholder="Enter custom comments or specific instructions..."></textarea>
+                </div>
+                <button id="btn-send-service-request" class="btn" style="background: var(--accent-blue); color: #0f172a; font-weight: bold;">Dispatch Multi-Recipient Service Request</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Hospital Notice Board & Inter-Departmental Chat Box -->
+    <div id="notice-board-modal" class="modal-overlay hidden">
+        <div class="modal-content" style="max-width: 700px;">
+            <div class="modal-header">
+                <h2>💬 Hospital Notice Board & Inter-Departmental Chat</h2>
+                <button class="close-modal" id="btn-close-notice-board-modal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <!-- Send Message Form -->
+                <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); padding: 15px; border-radius: 12px; margin-bottom: 20px;">
+                    <h3 style="margin-top: 0; margin-bottom: 12px; font-size: 1.05rem; color: var(--accent-purple);">✍️ Post Announcement / Inter-Departmental Chat</h3>
+                    
+                    <div class="form-row">
+                        <div class="form-group flex-1">
+                            <label>Target Department / Ward:</label>
+                            <select id="chat-target-dept">
+                                <option value="ALL">🌐 All Departments (Broadcast Notice)</option>
+                                <option value="General Ward A">General Ward A</option>
+                                <option value="General Ward B">General Ward B</option>
+                                <option value="ICU">ICU (Intensive Care Unit)</option>
+                                <option value="Cardiology">Cardiology</option>
+                                <option value="Pediatrics">Pediatrics</option>
+                                <option value="Emergency Ward">Emergency Ward</option>
+                            </select>
+                        </div>
+                        <div class="form-group flex-1">
+                            <label>Priority / Message Type:</label>
+                            <select id="chat-priority">
+                                <option value="NORMAL">💬 Normal Chat Message</option>
+                                <option value="URGENT">⚡ Urgent Alert</option>
+                                <option value="ANNOUNCEMENT">📢 Official Ward Announcement</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Message Content:</label>
+                        <textarea id="chat-message-input" rows="3" placeholder="Enter announcement, shift updates, ward notes, or message..."></textarea>
+                    </div>
+
+                    <button id="btn-send-chat-msg" class="btn" style="background: var(--accent-purple); color: #fff; font-weight: bold; width: 100%;">🚀 Post to Notice Board & Broadcast</button>
+                </div>
+
+                <!-- Live Messages Feed -->
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+                    <h3 style="margin: 0; font-size: 1.05rem;">📋 Live Notice Board Feed</h3>
+                    <select id="chat-filter-dept" style="font-size: 0.82rem; padding: 4px 10px; background: var(--card-bg); color: var(--text-primary); border: 1px solid var(--border-color); border-radius: 6px;">
+                        <option value="ALL">Filter: All Departments</option>
+                        <option value="General Ward A">General Ward A</option>
+                        <option value="General Ward B">General Ward B</option>
+                        <option value="ICU">ICU</option>
+                        <option value="Cardiology">Cardiology</option>
+                        <option value="Emergency Ward">Emergency Ward</option>
+                    </select>
+                </div>
+
+                <div id="notice-messages-container" style="max-height: 320px; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; padding-right: 5px;">
+                    <div class="empty-state">Loading notice board messages...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Patient Health Condition Rating -->
+    <div id="health-modal" class="modal-overlay hidden">
+        <div class="modal-content modal-small">
+            <div class="modal-header">
+                <h2>❤️ Patient Health Condition Rating</h2>
+                <button class="close-modal" id="btn-close-health-modal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div id="health-modal-patient-info" style="margin-bottom: 15px; font-weight: bold; color: var(--accent-blue);"></div>
+                <div class="form-group">
+                    <label>Health Condition Percentage (0% to 100%):</label>
+                    <div style="display: flex; align-items: center; gap: 15px;">
+                        <input type="range" id="health-range-input" min="0" max="100" value="100" style="flex: 1;">
+                        <input type="number" id="health-num-input" min="0" max="100" value="100" style="width: 75px; text-align: center; font-weight: bold; font-size: 1.1rem;">
+                    </div>
+                </div>
+
+                <div style="display: flex; gap: 8px; margin-bottom: 20px; flex-wrap: wrap;">
+                    <button type="button" class="btn-small" style="background: #22c55e; color: #fff;" onclick="setHealthPreset(100)">🟢 100% Perfect</button>
+                    <button type="button" class="btn-small" style="background: #22c55e; color: #fff;" onclick="setHealthPreset(85)">🟢 85% Stable</button>
+                    <button type="button" class="btn-small" style="background: #eab308; color: #0f172a;" onclick="setHealthPreset(65)">🟡 65% Watch</button>
+                    <button type="button" class="btn-small" style="background: #ef4444; color: #fff;" onclick="setHealthPreset(35)">🔴 35% Critical</button>
+                </div>
+
+                <button id="btn-save-health" class="btn" style="background: #22c55e; color: #fff; font-weight: bold;">Save & Update Health Condition</button>
+            </div>
+        </div>
+    </div>
+
+    
+    <!-- Modal: Edit Patient -->
+    <div id="edit-patient-modal" class="modal-overlay hidden">
+        <div class="modal-content modal-small">
+            <div class="modal-header">
+                <h2>✏️ Edit Patient Details</h2>
+                <button class="close-modal" id="btn-close-edit-modal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="edit-patient-id">
+                <div class="form-group">
+                    <label>Patient Full Name:</label>
+                    <input type="text" id="edit-patient-name">
+                </div>
+                <div class="form-group">
+                    <label>Assigned Ward:</label>
+                    <select id="edit-ward">
+                        <option value="General Ward A">General Ward A</option>
+                        <option value="General Ward B">General Ward B</option>
+                        <option value="ICU">ICU</option>
+                        <option value="Cardiology">Cardiology</option>
+                        <option value="Emergency Ward">Emergency Ward</option>
+                    </select>
+                </div>
+                <div class="form-row">
+                    <div class="form-group flex-1">
+                        <label>Room Number:</label>
+                        <input type="text" id="edit-room-no">
+                    </div>
+                    <div class="form-group flex-1">
+                        <label>Bed Number:</label>
+                        <input type="text" id="edit-bed-no">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group flex-1">
+                        <label>Age:</label>
+                        <input type="number" id="edit-age">
+                    </div>
+                    <div class="form-group flex-1">
+                        <label>Gender:</label>
+                        <select id="edit-gender">
+                            <option value="Male">Male</option>
+                            <option value="Female">Female</option>
+                            <option value="Other">Other</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Mobile Number:</label>
+                    <input type="text" id="edit-mobile-no">
+                </div>
+                <div class="form-group">
+                    <label>Cause / Reason of Admission:</label>
+                    <input type="text" id="edit-cause">
+                </div>
+                <button id="btn-submit-edit-patient" class="btn btn-primary" style="margin-top: 15px;">Save Changes</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Register New Patient -->
+    <div id="add-patient-modal" class="modal-overlay hidden">
+        <div class="modal-content modal-small">
+            <div class="modal-header">
+                <h2>+ Register New Patient Bed</h2>
+                <button class="close-modal" id="btn-close-add-modal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>Patient Full Name:</label>
+                    <input type="text" id="new-patient-name" placeholder="e.g. Michael Scott">
+                </div>
+                <div class="form-group">
+                    <label>Assigned Ward:</label>
+                    <select id="new-ward">
+                        <option value="General Ward A">General Ward A</option>
+                        <option value="General Ward B">General Ward B</option>
+                        <option value="ICU">ICU</option>
+                        <option value="Cardiology">Cardiology</option>
+                        <option value="Emergency Ward">Emergency Ward</option>
+                    </select>
+                </div>
+                <div class="form-row">
+                    <div class="form-group flex-1">
+                        <label>Room Number:</label>
+                        <input type="text" id="new-room-no" placeholder="105">
+                    </div>
+                    <div class="form-group flex-1">
+                        <label>Bed Number:</label>
+                        <input type="text" id="new-bed-no" placeholder="A1">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group flex-1">
+                        <label>Age:</label>
+                        <input type="number" id="new-age" placeholder="45">
+                    </div>
+                    <div class="form-group flex-1">
+                        <label>Gender:</label>
+                        <select id="new-gender">
+                            <option value="Male">Male</option>
+                            <option value="Female">Female</option>
+                            <option value="Other">Other</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group flex-1">
+                        <label>ID Card Type:</label>
+                        <select id="new-id-type">
+                            <option value="Aadhar Card">Aadhar Card</option>
+                            <option value="Passport">Passport</option>
+                            <option value="Driving License">Driving License</option>
+                            <option value="Voter ID">Voter ID</option>
+                            <option value="PAN Card">PAN Card</option>
+                            <option value="National Health ID">National Health ID (ABHA)</option>
+                        </select>
+                    </div>
+                    <div class="form-group flex-1">
+                        <label>ID Card Number:</label>
+                        <input type="text" id="new-id-card-no" placeholder="9876-5432-1098 / A1234567">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group flex-1">
+                        <label>Primary Mobile Number:</label>
+                        <input type="text" id="new-mobile-no" placeholder="+91 98765-43210">
+                    </div>
+                    <div class="form-group flex-1">
+                        <label>Alternative Mobile Number:</label>
+                        <input type="text" id="new-alt-mobile-no" placeholder="+91 98765-00000">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Emergency Contact Person & Phone:</label>
+                    <input type="text" id="new-emergency-contact" placeholder="e.g. Sarah Scott (Wife) - +91 98765-11111">
+                </div>
+                <div class="form-group">
+                    <label>Cause / Reason of Admission:</label>
+                    <input type="text" id="new-cause" placeholder="e.g. Acute Chest Pain, High Fever, Post-op Recovery">
+                </div>
+                <div class="form-row">
+                    <div class="form-group flex-1">
+                        <label>Admitted By (Staff):</label>
+                        <input type="text" id="new-admitted-by" placeholder="e.g. Reception Desk / Staff Name">
+                    </div>
+                    <div class="form-group flex-1">
+                        <label>Referred By (Doctor / Clinic):</label>
+                        <input type="text" id="new-referred-by" placeholder="e.g. Dr. R. Sharma / Self Referral">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Initial Clinical Admission Notes:</label>
+                    <textarea id="new-admission-notes" rows="2" placeholder="Enter initial observations, vital notes, or emergency comments..."></textarea>
+                </div>
+                <div class="form-group">
+                    <label>General Comments & Special Remarks:</label>
+                    <textarea id="new-comments" rows="2" placeholder="Dietary instructions, allergies, mobility remarks, or general notes..."></textarea>
+                </div>
+                <!-- Dynamic Custom Fields & Values Section -->
+                <div class="form-group" style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); padding: 12px; border-radius: 8px; margin-bottom: 15px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                        <label style="font-weight: bold; margin: 0; font-size: 0.9rem;">🏷️ Custom Parameters & Metadata:</label>
+                        <button type="button" id="btn-add-custom-field" class="btn-small" style="font-size: 0.78rem; padding: 4px 10px; background: var(--accent-blue); color: #0f172a; font-weight: bold; border-radius: 6px; cursor: pointer;">+ Add Custom Field</button>
+                    </div>
+                    <div id="custom-fields-container" style="display: flex; flex-direction: column; gap: 8px;"></div>
+                </div>
+                <div class="form-group">
+                    <label>ESP8266 Device MAC / ID (Optional):</label>
+                    <input type="text" id="new-esp-id" placeholder="e.g. A4:CF:12:89:5B:01">
+                </div>
+                <button id="btn-save-patient" class="btn" style="margin-top: 10px;">Save & Assign Bedside Unit</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Reports & Service Analytics Portal -->
+    <div id="reports-modal" class="modal-overlay hidden">
+        <div class="modal-content modal-large">
+            <div class="modal-header">
+                <h2>📊 Staff Service & Audit Reports Portal</h2>
+                <button class="close-modal" id="btn-close-reports-modal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <!-- Multi-Dimensional Report Filter Controls -->
+                <div class="add-comment-box" style="margin-bottom: 20px;">
+                    <h3>🔍 Segregation & Filter Parameters</h3>
+                    <div class="form-row">
+                        <div class="form-group flex-1">
+                            <label>Start Date:</label>
+                            <input type="date" id="report-start-date">
+                        </div>
+                        <div class="form-group flex-1">
+                            <label>End Date:</label>
+                            <input type="date" id="report-end-date">
+                        </div>
+                        <div class="form-group flex-1">
+                            <label>Ward / Department:</label>
+                            <select id="report-ward">
+                                <option value="ALL">All Wards</option>
+                                <option value="General Ward A">General Ward A</option>
+                                <option value="General Ward B">General Ward B</option>
+                                <option value="ICU">ICU</option>
+                                <option value="Cardiology">Cardiology</option>
+                                <option value="Pediatrics">Pediatrics</option>
+                                <option value="Emergency Ward">Emergency Ward</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group flex-1">
+                            <label>Staff Role:</label>
+                            <select id="report-role-filter">
+                                <option value="ALL">All Staff Roles</option>
+                                <option value="Doctor">🩺 Doctor Service Actions</option>
+                                <option value="Nurse">👩‍⚕️ Nurse Service Actions</option>
+                                <option value="Receptionist">📋 Receptionist Admissions</option>
+                            </select>
+                        </div>
+                        <div class="form-group flex-1">
+                            <label>Action Category:</label>
+                            <select id="report-action-type">
+                                <option value="ALL">All Actions</option>
+                                <option value="CALL_ACKNOWLEDGED">Nurse/Doctor Call Ack</option>
+                                <option value="CALL_RESOLVED">Call Cleared</option>
+                                <option value="NOTE">Clinical Notes & Rx</option>
+                                <option value="PATIENT_TRANSFERRED">Ward Transfers</option>
+                                <option value="STATUS_CHANGE">Discharge & Status</option>
+                            </select>
+                        </div>
+                        <div class="form-group flex-1">
+                            <label>Segregation Breakdown:</label>
+                            <select id="report-group-by">
+                                <option value="DETAILED">Detailed Chronological Audit Log</option>
+                                <option value="BY_DATE">Grouped Date-Wise</option>
+                                <option value="BY_PATIENT">Grouped Patient-Wise</option>
+                                <option value="BY_WARD">Grouped Ward-Wise</option>
+                                <option value="BY_STAFF">Grouped Staff Member-Wise</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- Toggles: Chronology & Privacy Masking -->
+                    <div style="display: flex; gap: 25px; margin-top: 10px; padding: 10px; background: #0f172a; border-radius: 8px; border: 1px solid var(--border-color); flex-wrap: wrap;">
+                        <label style="font-size: 0.88rem; cursor: pointer; display: flex; align-items: center; gap: 8px;">
+                            <input type="checkbox" id="report-chronology">
+                            <span>🕒 Ascending Chronology (Oldest ➔ Newest)</span>
+                        </label>
+                        <label style="font-size: 0.88rem; cursor: pointer; display: flex; align-items: center; gap: 8px;">
+                            <input type="checkbox" id="report-mask-privacy">
+                            <span>🔒 Privacy Mode (Mask Patient & Staff Names)</span>
+                        </label>
+                    </div>
+
+                    <div style="display: flex; gap: 10px; margin-top: 15px;">
+                        <button id="btn-run-report" class="btn flex-1">🔍 Run Query & Preview Report</button>
+                        <button id="btn-download-csv" class="btn flex-1" style="background: var(--accent-green); color: #0f172a; font-weight: bold;">📥 Download CSV Report</button>
+                        <button id="btn-print-report" class="btn flex-1" style="background: var(--border-color); color: #fff;">🖨️ Print Statement</button>
+                    </div>
+                </div>
+
+                <!-- Report Summary Stats -->
+                <div class="stats-grid" id="report-summary-cards" style="margin-bottom: 20px;">
+                    <div class="stat-card">
+                        <div class="stat-title">Total Service Events</div>
+                        <div class="stat-value" id="rep-stat-total">0</div>
+                    </div>
+                    <div class="stat-card nurse-card">
+                        <div class="stat-title">Calls Acknowledged</div>
+                        <div class="stat-value" id="rep-stat-calls">0</div>
+                    </div>
+                    <div class="stat-card urgent-card">
+                        <div class="stat-title">Prescriptions Logged</div>
+                        <div class="stat-value" id="rep-stat-rx">0</div>
+                    </div>
+                    <div class="stat-card pinned-card">
+                        <div class="stat-title">Transfers & Status Changes</div>
+                        <div class="stat-value" id="rep-stat-transfers">0</div>
+                    </div>
+                </div>
+
+                <!-- Report Preview Table -->
+                <h3 style="margin-bottom: 12px;">📋 Live Segregation Report Preview</h3>
+                <div class="table-container" style="max-height: 350px; overflow-y: auto;">
+                    <table id="report-preview-table">
+                        <thead id="report-table-head">
+                            <tr>
+                                <th>Timestamp</th>
+                                <th>Patient Name</th>
+                                <th>Ward</th>
+                                <th>Rm / Bed</th>
+                                <th>Staff Name</th>
+                                <th>Role</th>
+                                <th>Action Type</th>
+                                <th>Comment / Details</th>
+                            </tr>
+                        </thead>
+                        <tbody id="report-table-body">
+                            <tr><td colspan="8" style="text-align:center; color: var(--text-secondary);">Click "Run Query & Preview Report" to generate analytics data.</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/hospital.js') }}"></script>
+</body>
+</html>
